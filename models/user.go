@@ -1,7 +1,15 @@
 package models
 
+import "time"
+
+// เก็บข้อมูลใน Database
 type User struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	ID        int64     `json:"id"`
+	Username  string    `json:"username"`
+	Password  string    `json:"password"`        // ไม่ต้องแสดงออกมาเวลา serialize
+	Email     string    `json:"email"`
+	FullName  string    `json:"full_name"`
+	AvatarURL string    `json:"avatar_url"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
