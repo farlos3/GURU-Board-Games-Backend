@@ -47,6 +47,9 @@ func GetUser(c *fiber.Ctx) error {
 
 // GetAllUsers handler
 func GetAllUsersHandler(c *fiber.Ctx) error {
-	users := GetAllUsers()
+	users, err := GetAllUsers()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get users"})
+	}
 	return c.JSON(users)
 }

@@ -34,6 +34,10 @@ func GetBoardGameByName(c *fiber.Ctx) error {
 
 // GetAllBoardGames handler
 func GetAllBoardGames(c *fiber.Ctx) error {
-	boardgames := GetAllBoardgames()
+	boardgames, err := GetAllBoardgames()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get boardgames"})
+	}
 	return c.JSON(boardgames)
 }
+

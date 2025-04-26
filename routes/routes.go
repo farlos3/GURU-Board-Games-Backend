@@ -9,11 +9,11 @@ import (
 // SetupRoutes initializes all API routes
 func SetupRoutes(app *fiber.App) {
 	// Auth routes
-	api := app.Group("/auth")
-	api.Post("/register", auth.Register)
-	api.Post("/login", auth.Login)
-	api.Get("/user", auth.GetUser)
-	api.Get("/users", auth.GetAllUsersHandler)
+    api := app.Group("/auth")
+    api.Post("/register", auth.Register)
+    api.Post("/login", auth.Login)
+    api.Get("/user", auth.GetUser)
+    api.Get("/users", auth.GetAllUsersHandler)
 
 	// Boardgame routes
 	bg := app.Group("/boardgames")

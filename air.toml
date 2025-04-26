@@ -1,0 +1,24 @@
+# .air.toml
+
+# กำหนด root directory ของโปรเจกต์
+root = "."
+tmp_dir = "tmp"
+
+# กำหนดว่าจะ watch เฉพาะไฟล์ในโฟลเดอร์นี้
+[include]
+  # รวมไฟล์ที่เป็น go เท่านั้น
+  extensions = ["go", "tpl", "tmpl", "html"]
+
+[exclude_dir]
+  # ไม่ต้องสนใจโฟลเดอร์พวกนี้
+  folders = ["assets", "tmp", "vendor", "node_modules"]
+
+# คำสั่งที่ Air จะรันทุกครั้งที่มีการเปลี่ยนไฟล์
+[build]
+  cmd = "go build -o ./tmp/main ."
+  bin = "./tmp/main"
+  full_bin = "APP_ENV=development ./tmp/main" # ใส่ ENV ตัวอย่าง
+
+# Debug log ให้สวยๆ
+[log]
+  time = true

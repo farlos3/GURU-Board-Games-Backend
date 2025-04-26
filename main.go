@@ -5,25 +5,25 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"guru-game/routes"
-	"guru-game/internal/db"
-	"guru-game/internal/auth"
-	"guru-game/internal/boardgame"
+	"guru-game/internal/db/connection"
+	"guru-game/internal/db/repository"
+	"guru-game/internal/auth"            
 )
 
 func main() {
+	// สร้างแอปพลิเคชัน Fiber
 	app := fiber.New()
 
-	// Init mock database
-	db.ConnectMock()      // สำหรับ User
-	db.ConnectMockGame()  // สำหรับ BoardGame
+	// เชื่อมต่อกับฐานข้อมูล
+	connection.ConnectDB()
 
-	// Init Repositories
-	auth.Init(db.MockUserRepository{})         // auth ใช้ repo ของ User
-	boardgame.Init(db.MockBoardgameRepository{}) // boardgame ใช้ repo ของ Boardgame
+	// ✅ Inject PostgresUserRepository เข้าไปใน auth.Init()
+	auth.Init(&db.PostgresUserRepository{})
 
-	// Setup all routes (auth + boardgame)
+	// ตั้งค่า Routes
 	routes.SetupRoutes(app)
 
+	// เริ่มเซิร์ฟเวอร์
 	log.Println("🚀 Server is running on http://localhost:3000")
 	log.Fatal(app.Listen(":3000"))
 }

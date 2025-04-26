@@ -3,12 +3,13 @@ package boardgame
 import (
 	"errors"
 	"guru-game/models"
-	"guru-game/internal/db"
+	"guru-game/internal/db/repository"
 )
 
-var repo db.MockBoardgameRepository
+var repo db.BoardgameRepository
 
-func Init(r db.MockBoardgameRepository) {
+// Init สำหรับ Inject Repository
+func Init(r db.BoardgameRepository) {
 	repo = r
 }
 
@@ -26,6 +27,6 @@ func FindBoardGameByName(name string) (*models.BoardGame, error) {
 	return repo.GetByName(name)
 }
 
-func GetAllBoardgames() []models.BoardGame {
+func GetAllBoardgames() ([]models.BoardGame, error) {
 	return repo.GetAll()
 }
