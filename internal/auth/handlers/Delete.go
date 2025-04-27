@@ -23,7 +23,7 @@ func DeleteUserHandler(c *fiber.Ctx) error {
 
 	err := service.DeleteUser(&input)
 	if err != nil {
-		log.Println("Failed to delete user:", err)
+		log.Println("Failed to delete user ->", err)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
 	}
 

@@ -6,7 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"guru-game/routes"
 	"guru-game/internal/db/connection"
-	"guru-game/internal/db/repository"
+	"guru-game/internal/db/repository/user"
 	"guru-game/internal/auth/service"            
 )
 
@@ -18,7 +18,7 @@ func main() {
 	connection.ConnectDB()
 
 	// ✅ Inject PostgresUserRepository เข้าไปใน auth.Init()
-	service.Init(&db.PostgresUserRepository{})
+	service.Init(&user.PostgresUserRepository{})
 
 	// ตั้งค่า Routes
 	routes.SetupRoutes(app)

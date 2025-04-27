@@ -1,12 +1,12 @@
 package service
 
 import (
-	"guru-game/internal/db/repository"
+	"guru-game/internal/db/repository/user"
 )
 
-var repo db.UserRepository
+var repo user.UserRepository
 
 // Init สำหรับ Inject Repository
-func Init(r db.UserRepository) {
+func Init(r user.UserRepository) {
 	repo = r
 }

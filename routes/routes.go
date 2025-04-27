@@ -3,7 +3,7 @@ package routes
 import (
 	"github.com/gofiber/fiber/v2"
 	"guru-game/internal/auth/handlers"
-	"guru-game/internal/boardgame"
+	// "guru-game/internal/boardgame"
 )
 
 // SetupRoutes initializes all API routes
@@ -18,8 +18,8 @@ func SetupRoutes(app *fiber.App) {
 	api.Delete("/user/delete", handlers.DeleteUserHandler)
 
 	// Boardgame routes
-	bg := app.Group("/boardgames")
-	bg.Post("/add", boardgame.CreateBoardGame)        
-	bg.Get("/", boardgame.GetAllBoardGames)        
-	bg.Get("/:name", boardgame.GetBoardGameByName) 
+	// bg := app.Group("/boardgames")
+	// bg.Post("/add", boardgame.CreateBoardGame)        
+	// bg.Get("/", boardgame.GetAllBoardGames)        
+	// bg.Get("/:name", boardgame.GetBoardGameByName) 
 }
