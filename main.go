@@ -7,7 +7,7 @@ import (
 	"guru-game/routes"
 	"guru-game/internal/db/connection"
 	"guru-game/internal/db/repository"
-	"guru-game/internal/auth"            
+	"guru-game/internal/auth/service"            
 )
 
 func main() {
@@ -18,7 +18,7 @@ func main() {
 	connection.ConnectDB()
 
 	// ✅ Inject PostgresUserRepository เข้าไปใน auth.Init()
-	auth.Init(&db.PostgresUserRepository{})
+	service.Init(&db.PostgresUserRepository{})
 
 	// ตั้งค่า Routes
 	routes.SetupRoutes(app)
