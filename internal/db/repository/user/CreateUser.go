@@ -24,7 +24,9 @@ func (r *PostgresUserRepository) Create(user *models.User) (*models.User, error)
 
 	query := `INSERT INTO users (username, password, email, full_name, avatar_url, created_at, updated_at) 
 		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`
+		
 	err = connection.DB.QueryRow(context.Background(), query, user.Username, string(hashedPassword), user.Email, user.FullName, user.AvatarURL, currentTime, currentTime).Scan(&user.ID)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert user: %v", err)
 	}

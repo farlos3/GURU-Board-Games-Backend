@@ -1,4 +1,4 @@
-package handlers
+package handlers_Auth
 
 import (
     "github.com/gofiber/fiber/v2"

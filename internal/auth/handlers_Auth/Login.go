@@ -1,8 +1,8 @@
-package handlers
+package handlers_Auth
 
 import (
     "github.com/gofiber/fiber/v2"
-    "guru-game/internal/auth/service"
+    "guru-game/internal/auth/service_auth"
     "guru-game/models"
 )
 
@@ -13,7 +13,7 @@ func LoginHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
 	}
 
-	user, err := service.LoginUser(input.Username, input.Password)
+	user, err := service_auth.LoginUser(input.Username, input.Password)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}

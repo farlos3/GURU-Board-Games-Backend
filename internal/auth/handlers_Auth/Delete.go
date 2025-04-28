@@ -1,10 +1,10 @@
-package handlers
+package handlers_Auth
 
 import (
 	"log"
 
 	"github.com/gofiber/fiber/v2"
-	"guru-game/internal/auth/service"
+	"guru-game/internal/auth/service_auth"
 	"guru-game/models"
 )
 
@@ -21,7 +21,7 @@ func DeleteUserHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Username, email, and password required"})
 	}
 
-	err := service.DeleteUser(&input)
+	err := service_auth.DeleteUser(&input)
 	if err != nil {
 		log.Println("Failed to delete user ->", err)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})

@@ -1,0 +1,11 @@
+package main
+
+import (
+	"guru-game/internal/boardgame/search"      
+)
+
+func main() {
+	
+	search.InitElasticsearch()
+	
+}

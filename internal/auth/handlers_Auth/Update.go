@@ -1,10 +1,10 @@
-package handlers
+package handlers_Auth
 
 import (
 	"log"
 
     "github.com/gofiber/fiber/v2"
-    "guru-game/internal/auth/service"
+    "guru-game/internal/auth/service_auth"
     "guru-game/models"
 )
 
@@ -17,7 +17,7 @@ func UpdateUserHandler(c *fiber.Ctx) error {
 	}
 
 	// เรียก service ตัวเดียว
-	updatedUser, err := service.UpdateUser(&input)
+	updatedUser, err := service_auth.UpdateUser(&input)
 	if err != nil {
 		log.Println("Failed to update user:", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})

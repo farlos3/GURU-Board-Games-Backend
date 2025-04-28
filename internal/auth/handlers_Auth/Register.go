@@ -1,8 +1,8 @@
-package handlers
+package handlers_Auth
 
 import (
     "github.com/gofiber/fiber/v2"
-    "guru-game/internal/auth/service"
+    "guru-game/internal/auth/service_auth"
     "guru-game/models"
 )
 
@@ -14,7 +14,7 @@ func RegisterHandler(c *fiber.Ctx) error {
 	}
 
 	// เรียกผ่าน service
-	user, err := service.RegisterUser(newUser)
+	user, err := service_auth.RegisterUser(newUser)
 	if err != nil {
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Username already exists"})
 	}
