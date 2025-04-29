@@ -1,3 +1,5 @@
+// เหมือนจะยังไมได้เรียกใช้ที่อื่นนอกจากที่ Routes
+
 package handlers_Auth
 
 import (
@@ -5,11 +7,19 @@ import (
     "guru-game/models"
 )
 
-// GetUser handler
+// StatusHandler ตรวจสอบสถานะของ user ที่ล็อกอิน
 func StatusHandler(c *fiber.Ctx) error {
-	user, ok := c.Locals("currentUser").(models.User)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Not logged in"})
-	}
-	return c.JSON(user)
+    // ดึงข้อมูล currentUser จาก context
+    user, ok := c.Locals("currentUser").(models.User)
+    if !ok {
+        // ถ้าไม่มีข้อมูลหรือไม่ได้ล็อกอิน
+        return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Not logged in"})
+    }
+
+    // ส่งข้อมูล user กลับไปในรูปแบบ JSON
+    return c.JSON(fiber.Map{
+        "message":  "User is logged in",
+        "user_id":  user.ID,
+        "username": user.Username,
+    })
 }

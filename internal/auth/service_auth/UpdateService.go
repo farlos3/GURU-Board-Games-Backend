@@ -8,7 +8,8 @@ import (
 )
 
 // UpdateUser รับ models.User ที่อาจมี username หรือ email, ทำการหา user และอัปเดต
-func UpdateUser(input *models.User) (*models.User, error) {
+// เพิ่มการตรวจสอบว่า user ที่มาจาก token คือผู้ใช้นั้นหรือไม่
+func UpdateUser(input *models.User, tokenUserID int64) (*models.User, error) {
 	if input == nil {
 		return nil, errors.New("input cannot be nil")
 	}
@@ -35,6 +36,12 @@ func UpdateUser(input *models.User) (*models.User, error) {
 	}
 
 	log.Printf("🔎 Found user ID: %d\n", user.ID)
+
+	// เช็กว่า ID ของผู้ใช้จาก token ตรงกับ ID ของ user ที่ต้องการอัปเดต
+	if user.ID != tokenUserID {
+		log.Println("User ID from token does not match the user being updated")
+		return nil, errors.New("you can only update your own information")
+	}
 
 	// ใช้ ID จริงของ user มาเซ็ตใน input
 	input.ID = user.ID
