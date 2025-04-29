@@ -5,6 +5,7 @@ go 1.23.4
 require (
 	github.com/elastic/go-elasticsearch/v9 v9.0.0
 	github.com/gofiber/fiber/v2 v2.52.6
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/joho/godotenv v1.5.1
 	golang.org/x/crypto v0.37.0
