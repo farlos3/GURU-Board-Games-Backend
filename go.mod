@@ -3,6 +3,7 @@ module guru-game
 go 1.23.4
 
 require (
+	github.com/elastic/elasticsearch-serverless-go v0.1.1-20231031
 	github.com/elastic/go-elasticsearch/v9 v9.0.0
 	github.com/gofiber/fiber/v2 v2.52.6
 	github.com/golang-jwt/jwt/v5 v5.2.2

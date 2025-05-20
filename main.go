@@ -8,6 +8,7 @@ import (
 
 	"guru-game/internal/auth/service_auth"
 	"guru-game/internal/boardgame/service_board"
+	"guru-game/internal/boardgame/search"
 
 	"guru-game/internal/db/connection"
 	"guru-game/internal/db/repository/boardgame"
@@ -27,12 +28,13 @@ func main() {
 	// Set up routes
 	routes.SetupRoutes(app)
 
-	// Read port from environment or default to 3000
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
 	}
 
+	search.InitElasticsearch()
+	
 	log.Printf("🚀 Server is running on http://localhost:%s\n", port)
 	log.Fatal(app.Listen(":" + port))
 }

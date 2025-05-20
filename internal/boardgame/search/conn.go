@@ -12,7 +12,6 @@ var es *elasticsearch.Client
 
 // Initialize Elasticsearch connection
 func InitElasticsearch() {
-	// Load environment variables from the .env file
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatalf("Error loading .env file: %s", err)
@@ -21,7 +20,6 @@ func InitElasticsearch() {
 	cloudID := os.Getenv("CLOUD_ID") 
 	apiKey := os.Getenv("API_KEY")
 
-	// Ensure that both variables are set
 	if cloudID == "" || apiKey == "" {
 		log.Fatal("CLOUD_ID and API_KEY must be set in the .env file")
 	}
@@ -39,7 +37,6 @@ func InitElasticsearch() {
 		log.Fatalf("Error creating the client: %s", err)
 	}
 
-	// Optional: Test the connection (useful for debugging)
 	res, err := es.Info()
 	if err != nil {
 		log.Fatalf("Error getting Elasticsearch info: %s", err)
