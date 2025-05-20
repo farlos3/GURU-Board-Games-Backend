@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -15,22 +16,23 @@ import (
 )
 
 func main() {
-	// สร้างแอปพลิเคชัน Fiber
+	// Start fiber
 	app := fiber.New()
 
-	// เชื่อมต่อกับฐานข้อมูล
+	// Connect DB
 	connection.ConnectDB()
-
-	// ✅ Inject PostgresUserRepository เข้าไปใน auth.Init()
 	service_auth.Init(&user.PostgresUserRepository{})
-
-	// ✅ Inject PostgresBoardgameRepository เข้าไปใน service_board.Init()
 	service_board.Init(&boardgame.PostgresBoardgameRepository{})
 
-	// ตั้งค่า Routes
+	// Set up routes
 	routes.SetupRoutes(app)
 
-	// เริ่มเซิร์ฟเวอร์
-	log.Println("🚀 Server is running on http://localhost:3000")
-	log.Fatal(app.Listen(":3000"))
+	// Read port from environment or default to 3000
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
+
+	log.Printf("🚀 Server is running on http://localhost:%s\n", port)
+	log.Fatal(app.Listen(":" + port))
 }

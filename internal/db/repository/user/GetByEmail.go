@@ -8,6 +8,7 @@ import (
 	"guru-game/models"
 )
 
+// Get By Email
 func (r *PostgresUserRepository) GetByEmail(email string) (*models.User, error) {
 	query := `SELECT id, username, email, password, full_name, avatar_url, created_at, updated_at FROM users WHERE email = $1`
 	row := connection.DB.QueryRow(context.Background(), query, email)

@@ -7,7 +7,7 @@ import (
 	"guru-game/models"
 )
 
-// ฟังก์ชันดึงข้อมูลบอร์ดเกมทั้งหมดจากฐานข้อมูล
+// Get All Boardgame
 func (r *PostgresBoardgameRepository) GetAll() ([]models.BoardGame, error) {
 	query := `SELECT id, name, description, players FROM boardgames`
 	rows, err := connection.DB.Query(context.Background(), query)
@@ -17,6 +17,7 @@ func (r *PostgresBoardgameRepository) GetAll() ([]models.BoardGame, error) {
 	defer rows.Close()
 
 	var boardgames []models.BoardGame
+	
 	for rows.Next() {
 		var boardgame models.BoardGame
 		err := rows.Scan(&boardgame.ID, &boardgame.Name, &boardgame.Description, &boardgame.Players)

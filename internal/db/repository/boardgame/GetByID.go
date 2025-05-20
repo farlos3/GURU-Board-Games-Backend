@@ -7,7 +7,7 @@ import (
 	"guru-game/models"
 )
 
-// ฟังก์ชันค้นหาบอร์ดเกมโดย ID
+// Get Boardgame by ID
 func (r *PostgresBoardgameRepository) GetByID(id int) (*models.BoardGame, error) {
 	query := `SELECT id, name, description, players FROM boardgames WHERE id = $1`
 	row := connection.DB.QueryRow(context.Background(), query, id)

@@ -8,6 +8,7 @@ import (
 	"guru-game/models"
 )
 
+// Get All User
 func (r *PostgresUserRepository) GetAll() ([]models.User, error) {
 	query := `SELECT id, username, password, email, full_name, avatar_url, created_at, updated_at FROM users`
 	rows, err := connection.DB.Query(context.Background(), query)

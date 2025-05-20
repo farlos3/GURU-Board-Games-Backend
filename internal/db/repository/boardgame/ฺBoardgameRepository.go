@@ -4,7 +4,7 @@ import (
 	"guru-game/models"
 )
 
-// BoardGameRepository interface สำหรับ CRUD บอร์ดเกม
+// BoardGameRepository interface for CRUD
 type BoardGameRepository interface {
 	GetByID(id int) (*models.BoardGame, error)
 	GetAll() ([]models.BoardGame, error)

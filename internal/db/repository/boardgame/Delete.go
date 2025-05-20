@@ -6,7 +6,7 @@ import (
 	"guru-game/internal/db/connection"
 )
 
-// ฟังก์ชันลบบอร์ดเกมตาม ID
+// Delete Boardgame by ID
 func (r *PostgresBoardgameRepository) Delete(id int) error {
 	query := `DELETE FROM boardgames WHERE id = $1`
 	_, err := connection.DB.Exec(context.Background(), query, id)

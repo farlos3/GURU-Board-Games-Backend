@@ -13,9 +13,8 @@ import (
 func (r *PostgresUserRepository) Update(user *models.User) (*models.User, error) {
 	var hashedPassword string
 
-	// เช็กว่ามีการส่ง password ใหม่มาจริงไหม
+	// Check New password
 	if user.Password != "" {
-		// ถ้ามี password ใหม่ ให้ทำการ hash
 		finalPassword := passwordPrefix + user.Password + passwordSuffix
 		hashed, err := bcrypt.GenerateFromPassword([]byte(finalPassword), bcrypt.DefaultCost)
 		if err != nil {
@@ -23,7 +22,7 @@ func (r *PostgresUserRepository) Update(user *models.User) (*models.User, error)
 		}
 		hashedPassword = string(hashed)
 	} else {
-		// ถ้าไม่มี password ใหม่ ให้ใช้ password เดิม (ที่ถูก hash แล้ว)
+		// Use old password
 		hashedPassword = user.Password
 	}
 
@@ -34,7 +33,7 @@ func (r *PostgresUserRepository) Update(user *models.User) (*models.User, error)
 		return nil, fmt.Errorf("failed to update user: %v", err)
 	}
 
-	// ดึงข้อมูล User ใหม่จาก DB
+	// Query user from DB
 	var updatedUser models.User
 	selectQuery := `SELECT id, username, email, full_name, avatar_url, created_at, updated_at FROM users WHERE id = $1`
 	err = connection.DB.QueryRow(context.Background(), selectQuery, user.ID).Scan(

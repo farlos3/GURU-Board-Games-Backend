@@ -19,7 +19,7 @@ func (r *PostgresUserRepository) Create(user *models.User) (*models.User, error)
 		return nil, fmt.Errorf("failed to hash password: %v", err)
 	}
 
-	// ใช้เวลาปัจจุบันสำหรับ created_at และ updated_at
+	// updatet current time created_at and updated_at
 	currentTime := time.Now()
 
 	query := `INSERT INTO users (username, password, email, full_name, avatar_url, created_at, updated_at) 
@@ -31,7 +31,6 @@ func (r *PostgresUserRepository) Create(user *models.User) (*models.User, error)
 		return nil, fmt.Errorf("failed to insert user: %v", err)
 	}
 
-	// เปลี่ยน password ใน struct เป็น hashed ด้วย
 	user.Password = string(hashedPassword)
 	user.CreatedAt = currentTime
 	user.UpdatedAt = currentTime
