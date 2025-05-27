@@ -7,23 +7,20 @@ import (
 	"guru-game/models"
 )
 
-func LoginUser(username, password string) (*models.User, error) {
-	log.Printf("🔐 Attempting to login with username: %s\n", username)
+func LoginUser(identifier, password string) (*models.User, error) {
+	log.Printf("🔐 Attempting to login with identifier: %s\n", identifier)
 
-	// เช็กว่า username/password ไม่ว่าง
-	if username == "" || password == "" {
-		log.Println("Username or password is empty")
-		return nil, errors.New("username and password must not be empty")
+	if identifier == "" || password == "" {
+		log.Println("Identifier or password is empty")
+		return nil, errors.New("identifier and password must not be empty")
 	}
 
-	// เรียก repo หา user
-	user, err := repo.GetByCredentials(username, password)
+	user, err := repo.GetByCredentials(identifier, password)
 	if err != nil {
-		log.Printf("Login failed for username '%s': %v\n", username, err)
-		return nil, errors.New("invalid username or password")
+		log.Printf("Login failed for identifier '%s': %v\n", identifier, err)
+		return nil, errors.New("invalid email or username or password")
 	}
 
-	log.Printf("User '%s' logged in successfully.\n", username)
-	
+	log.Printf("User '%s' logged in successfully.\n", user.Username)
 	return user, nil
 }

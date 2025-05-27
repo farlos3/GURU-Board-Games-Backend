@@ -1,51 +1,49 @@
 package handlers_Auth
 
 import (
-	"github.com/gofiber/fiber/v2"
-	"guru-game/internal/auth/service_auth"
-	"guru-game/internal/auth/jwt"
-	"guru-game/internal/auth/otp"
+    "log"
 
+	"github.com/gofiber/fiber/v2"
+    
+	"guru-game/internal/auth/service_auth"
+    "guru-game/internal/auth/otp"
 	"guru-game/models"
 )
 
 // LoginHandler
 func LoginHandler(c *fiber.Ctx) error {
-    input := new(models.User)
-    if err := c.BodyParser(input); err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
-    }
+	input := new(models.User)
+	if err := c.BodyParser(input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
+	}
 
-    // ตรวจสอบ OTP
-    otpCode := c.Query("otp") // รับ OTP จาก query parameter หรือ request body
-    if otpCode == "" {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "OTP is required"})
-    }
+	log.Println("🔔 [LoginHandler] user submitted:")
+	log.Printf("Identifier: %s\n", input.Identifier)
 
-    // ตรวจสอบว่า OTP ถูกต้องหรือไม่
-    if !otp.VerifyOTP(input.Email, otpCode) {
-        return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid OTP"})
-    }
+	user, err := service_auth.LoginUser(input.Identifier, input.Password)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
+	}
 
-    // เรียก service เพื่อทำการ login
-    user, err := service_auth.LoginUser(input.Username, input.Password)
-    if err != nil {
-        return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
-    }
+	// สร้าง OTP ใหม่ทุกครั้งหลัง login ผ่าน
+	otpCode, err := otp.GenerateOTP()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate OTP"})
+	}
 
-    // สร้าง JWT token สำหรับผู้ใช้ที่ login สำเร็จ
-    token, err := jwt.GenerateJWT(user.ID, user.Username)
-    if err != nil {
-        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
-    }
+	log.Printf("Generated OTP for %s: %s\n", user.Email, otpCode)
 
-    // บันทึกข้อมูล user ลงใน context
-    c.Locals("currentUser", *user)
+	// บันทึก OTP และ user ชั่วคราว (ในหน่วยความจำ หรือ DB)
+	otp.SaveOTP(user.Email, otpCode)
+	otp.SaveTempUser(user.Email, *user)
 
-    // ส่ง response กลับไปพร้อมกับ JWT token
-    return c.JSON(fiber.Map{
-        "message": "Login successful",
-        "user":    user,
-        "token":   token,
-    })
+	// ส่ง OTP ทางอีเมล
+	otp.SendEmail(user.Email, otpCode)
+
+	// แจ้ง client ว่าต้องยืนยัน OTP
+	return c.JSON(fiber.Map{
+		"requireOtp": true,
+		"email":      user.Email,
+		"message":    "OTP sent, please verify it",
+	})
 }
