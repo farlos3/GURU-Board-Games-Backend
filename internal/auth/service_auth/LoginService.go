@@ -24,5 +24,6 @@ func LoginUser(username, password string) (*models.User, error) {
 	}
 
 	log.Printf("User '%s' logged in successfully.\n", username)
+	
 	return user, nil
 }

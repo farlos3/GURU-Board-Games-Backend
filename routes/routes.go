@@ -13,6 +13,7 @@ func SetupRoutes(app *fiber.App) {
 	api.Post("/register", handlers_Auth.RegisterHandler)
 	api.Post("/login", handlers_Auth.LoginHandler)
 	app.Post("/auth/verify-otp", handlers_Auth.VerifyOTPHandler)
+	api.Post("/resend-otp", handlers_Auth.ResendOTPHandler)
 
 	api.Get("/status", jwt.JWTMiddleware, handlers_Auth.StatusHandler)
 	api.Get("/users", handlers_Auth.GetAllUsersHandler)

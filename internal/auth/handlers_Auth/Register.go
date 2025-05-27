@@ -29,13 +29,11 @@ func RegisterHandler(c *fiber.Ctx) error {
 
 	// สร้าง OTP, ส่ง OTP, บันทึก OTP ตามเดิม (ถ้าจำเป็น)
 	otpCode, err := otp.GenerateOTP()
-
 	log.Printf("OTP: %s\n", otpCode)
-	
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate OTP"})
 	}
-	otp.SendEmail(newUser.Email, otpCode)
+
 	otp.SaveOTP(newUser.Email, otpCode)
 
 	// บันทึกข้อมูลผู้ใช้ชั่วคราว (ในหน่วยความจำ)
@@ -45,6 +43,8 @@ func RegisterHandler(c *fiber.Ctx) error {
 		Email:    newUser.Email,
 		Password: newUser.Password,
 	})
+
+	otp.SendEmail(newUser.Email, otpCode)
 
 	return c.JSON(fiber.Map{
 		"message": "OTP sent to your email. Please verify to complete registration.",

@@ -46,6 +46,6 @@ func LoginHandler(c *fiber.Ctx) error {
     return c.JSON(fiber.Map{
         "message": "Login successful",
         "user":    user,
-        "token":   token, // ส่ง token กลับไปใน response
+        "token":   token,
     })
 }
