@@ -12,6 +12,8 @@ func SetupRoutes(app *fiber.App) {
 	api := app.Group("/auth")
 	api.Post("/register", handlers_Auth.RegisterHandler)
 	api.Post("/login", handlers_Auth.LoginHandler)
+	app.Post("/auth/verify-otp", handlers_Auth.VerifyOTPHandler)
+
 	api.Get("/status", jwt.JWTMiddleware, handlers_Auth.StatusHandler)
 	api.Get("/users", handlers_Auth.GetAllUsersHandler)
 	api.Put("/user/update", jwt.JWTMiddleware, handlers_Auth.UpdateUserHandler)

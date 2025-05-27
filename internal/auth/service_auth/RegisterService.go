@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log"
 
-	"guru-game/internal/auth/jwt" // import jwt package
+	"guru-game/internal/auth/jwt"
 	"guru-game/models"
 )
 

@@ -5,10 +5,10 @@ import (
 	"os"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 
 	"guru-game/internal/auth/service_auth"
 	"guru-game/internal/boardgame/service_board"
-	"guru-game/internal/boardgame/search"
 
 	"guru-game/internal/db/connection"
 	"guru-game/internal/db/repository/boardgame"
@@ -17,8 +17,14 @@ import (
 )
 
 func main() {
-	// Start fiber
 	app := fiber.New()
+
+	// ตั้งค่า CORS middleware เพื่ออนุญาต frontend จาก localhost:3000
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "http://localhost:3000", // เปลี่ยนเป็นโดเมน frontend ของคุณ
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+	}))
 
 	// Connect DB
 	connection.ConnectDB()
@@ -28,13 +34,11 @@ func main() {
 	// Set up routes
 	routes.SetupRoutes(app)
 
-	port := os.Getenv("PORT")
+	port := os.Getenv("GO_PORT")
 	if port == "" {
-		port = "3000"
+		port = "5000"
 	}
 
-	search.InitElasticsearch()
-	
 	log.Printf("🚀 Server is running on http://localhost:%s\n", port)
 	log.Fatal(app.Listen(":" + port))
 }
