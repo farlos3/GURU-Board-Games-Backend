@@ -12,6 +12,7 @@ type UserRepository interface {
 	Update(user *models.User) (*models.User, error)
 	Delete(userID int64) error
 	GetByEmail(username string) (*models.User, error)
+	GetByID(userID int64) (*models.User, error)
 }
 
 type PostgresUserRepository struct{}

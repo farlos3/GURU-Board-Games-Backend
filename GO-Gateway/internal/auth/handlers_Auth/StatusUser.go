@@ -1,5 +1,3 @@
-// เหมือนจะยังไมได้เรียกใช้ที่อื่นนอกจากที่ Routes
-
 package handlers_Auth
 
 import (

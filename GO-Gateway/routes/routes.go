@@ -1,13 +1,14 @@
 package routes
 
 import (
-	"log"
-	"github.com/gofiber/fiber/v2"
 	"guru-game/internal/auth/handlers_Auth"
 	"guru-game/internal/auth/jwt"
 	"guru-game/internal/boardgame/handlers_board"
 	"guru-game/internal/boardgame/service_board"
 	"guru-game/internal/recommendation"
+	"log"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 func SetupRoutes(app *fiber.App) {
@@ -21,7 +22,7 @@ func SetupRoutes(app *fiber.App) {
 	}
 
 	bgService := service_board.GetBoardgameService()
-	
+
 	var recommendHandler *recommendation.RecommendationHandler
 	if grpcClient != nil {
 		recommendHandler = recommendation.NewRecommendationHandler(grpcClient, bgService)
@@ -38,6 +39,7 @@ func SetupRoutes(app *fiber.App) {
 
 	api.Get("/status", jwt.JWTMiddleware, handlers_Auth.StatusHandler)
 	api.Get("/users", handlers_Auth.GetAllUsersHandler)
+	api.Get("/profile", jwt.JWTMiddleware, handlers_Auth.GetProfileHandler)
 	api.Put("/user/update", jwt.JWTMiddleware, handlers_Auth.UpdateUserHandler)
 	api.Delete("/user/delete", jwt.JWTMiddleware, handlers_Auth.DeleteUserHandler)
 
@@ -49,12 +51,12 @@ func SetupRoutes(app *fiber.App) {
 
 	// Recommendation routes
 	reco := app.Group("/recommendations")
-	
+
 	if recommendHandler != nil {
 		// ส่งข้อมูล boardgames ทั้งหมดไปยัง Python ML service
 		reco.Post("/send-all", recommendHandler.HandleSendAllBoardgames)
 		reco.Get("/send-all", recommendHandler.HandleSendAllBoardgames) // รองรับ GET ด้วย
-		
+
 		// ขอ recommendations สำหรับ user
 		reco.Get("/", recommendHandler.HandleGetRecommendations)
 		reco.Get("/user/:user_id", func(c *fiber.Ctx) error {
@@ -66,7 +68,7 @@ func SetupRoutes(app *fiber.App) {
 		// หาก gRPC client ไม่พร้อมใช้งาน
 		reco.All("/*", func(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
-				"error": "Recommendation service is currently unavailable",
+				"error":   "Recommendation service is currently unavailable",
 				"message": "Python ML service is not connected",
 			})
 		})
