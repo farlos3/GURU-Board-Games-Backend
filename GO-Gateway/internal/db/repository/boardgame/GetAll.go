@@ -11,7 +11,7 @@ import (
 func (r *PostgresBoardgameRepository) GetAll() ([]models.BoardGame, error) {
 	query := `
 		SELECT 
-			title, description, min_players, max_players, play_time_min, play_time_max, 
+			id, title, description, min_players, max_players, play_time_min, play_time_max, 
 			categories, rating_avg, rating_count, popularity_score, image_url, created_at, updated_at
 		FROM boardgames
 	`
@@ -26,6 +26,7 @@ func (r *PostgresBoardgameRepository) GetAll() ([]models.BoardGame, error) {
 	for rows.Next() {
 		var bg models.BoardGame
 		err := rows.Scan(
+			&bg.ID,
 			&bg.Title,
 			&bg.Description,
 			&bg.MinPlayers,

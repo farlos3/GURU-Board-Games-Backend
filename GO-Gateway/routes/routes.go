@@ -5,29 +5,43 @@ import (
 	"guru-game/internal/auth/jwt"
 	"guru-game/internal/boardgame/handlers_board"
 	"guru-game/internal/boardgame/service_board"
+	"guru-game/internal/db/repository/boardgame"
+	gamesearchhandlers "guru-game/internal/gamesearch/handlers"
+	gamestatehandlers "guru-game/internal/gamestate/handlers"
 	"guru-game/internal/recommendation"
+	useractivityhandlers "guru-game/internal/useractivity/handlers"
 	"log"
+	"os"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/joho/godotenv"
 )
 
 func SetupRoutes(app *fiber.App) {
-	// --- Setup gRPC client for recommendation ---
-	log.Println("🔌 Connecting to Python ML gRPC service...")
-	grpcClient, err := recommendation.NewGRPCRecommendationClient("localhost:8001")
-	if err != nil {
-		log.Printf("⚠️  Warning: Failed to connect to Python ML gRPC service: %v", err)
-		log.Println("📝 Recommendation features will be disabled")
-		// ไม่ panic แต่จะทำให้ recommendation routes ไม่ทำงาน
+	// Load environment variables
+	if err := godotenv.Load(); err != nil {
+		log.Println("⚠️ Warning: .env file not found")
 	}
+
+	// Get Python service URL from environment variable, default to localhost:50051
+	pythonServiceURL := os.Getenv("PYTHON_SERVICE_URL")
+	if pythonServiceURL == "" {
+		pythonServiceURL = "http://localhost:50051"
+	}
+
+	// --- Setup REST client for recommendation ---
+	log.Println("🔌 Connecting to Python ML REST service...")
+	log.Printf("🌐 Python service URL: %s", pythonServiceURL)
+	restClient := recommendation.NewRESTRecommendationClient(pythonServiceURL)
+	log.Println("✅ REST client initialized")
 
 	bgService := service_board.GetBoardgameService()
+	recommendHandler := recommendation.NewHandler(restClient, bgService)
+	log.Println("✅ Recommendation handler initialized")
 
-	var recommendHandler *recommendation.RecommendationHandler
-	if grpcClient != nil {
-		recommendHandler = recommendation.NewRecommendationHandler(grpcClient, bgService)
-		log.Println("✅ Recommendation handler initialized")
-	}
+	// Initialize BoardGameRepository and Handlers
+	boardGameRepo := &boardgame.PostgresBoardgameRepository{} // Assuming Postgres is used
+	boardGameHandlers := handlers_board.NewBoardGameHandlers(boardGameRepo)
 
 	// Auth routes
 	api := app.Group("/auth")
@@ -45,32 +59,48 @@ func SetupRoutes(app *fiber.App) {
 
 	// Boardgame routes
 	bg := app.Group("/boardgames")
-	bg.Get("/", handlers_board.GetAllBoardGamesHandler)
-	bg.Get("/:id", handlers_board.GetBoardGameByIDHandler)
-	bg.Delete("/:id", handlers_board.DeleteBoardGameHandler)
+	// Apply JWT middleware to potentially get user ID, but handler logic should handle unauthenticated users
+	bg.Get("/", jwt.JWTMiddleware, boardGameHandlers.HandleGetAllBoardGames)
+
+	// User Activity routes
+	userActivity := app.Group("/user/activities")
+	// Create a new instance of UserActivityHandler with the restClient
+	userActivityHandler := useractivityhandlers.NewUserActivityHandler(restClient)
+	userActivity.Post("/", userActivityHandler.HandleUserActivity)
 
 	// Recommendation routes
 	reco := app.Group("/recommendations")
 
-	if recommendHandler != nil {
-		// ส่งข้อมูล boardgames ทั้งหมดไปยัง Python ML service
-		reco.Post("/send-all", recommendHandler.HandleSendAllBoardgames)
-		reco.Get("/send-all", recommendHandler.HandleSendAllBoardgames) // รองรับ GET ด้วย
+	// ส่งข้อมูล boardgames ทั้งหมดไปยัง Python ML service
+	reco.Post("/send-all", recommendHandler.HandleSendAllBoardgames)
+	reco.Get("/send-all", recommendHandler.HandleSendAllBoardgames) // รองรับ GET ด้วย
 
-		// ขอ recommendations สำหรับ user
-		reco.Get("/", recommendHandler.HandleGetRecommendations)
-		reco.Get("/user/:user_id", func(c *fiber.Ctx) error {
-			// ตั้งค่า user_id จาก path parameter
-			c.Queries()["user_id"] = c.Params("user_id")
-			return recommendHandler.HandleGetRecommendations(c)
-		})
-	} else {
-		// หาก gRPC client ไม่พร้อมใช้งาน
-		reco.All("/*", func(c *fiber.Ctx) error {
-			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
-				"error":   "Recommendation service is currently unavailable",
-				"message": "Python ML service is not connected",
-			})
-		})
-	}
+	// ขอ recommendations สำหรับ user
+	reco.Get("/", recommendHandler.HandleGetRecommendations)
+	reco.Get("/user/:user_id", func(c *fiber.Ctx) error {
+		// ตั้งค่า user_id จาก path parameter
+		c.Queries()["user_id"] = c.Params("user_id")
+		return recommendHandler.HandleGetRecommendations(c)
+	})
+
+	// ดึง boardgames ทั้งหมดจาก Elasticsearch ผ่าน service
+	reco.Get("/all-boardgames", recommendHandler.HandleGetAllBoardgamesFromES)
+
+	// ขอ popular boardgames
+	reco.Get("/popular", recommendHandler.HandleGetPopularBoardgames)
+
+	// User actions
+	reco.Post("/actions", recommendHandler.HandleAddUserAction)
+	reco.Get("/actions/user/:user_id", recommendHandler.HandleGetUserActions)
+	reco.Get("/actions/boardgame/:boardgame_id", recommendHandler.HandleGetBoardgameActions)
+
+	// Game State Update routes
+	gameState := app.Group("/api/game/updateState")
+	gameState.Post("/", gamestatehandlers.HandleGameStateUpdate)
+	gameState.Put("/", gamestatehandlers.HandleGameStateUpdate)
+	gameState.Patch("/", gamestatehandlers.HandleGameStateUpdate)
+
+	// Game Search routes
+	gameSearch := app.Group("/api/game/search")
+	gameSearch.Get("/", gamesearchhandlers.HandleGameSearch)
 }
