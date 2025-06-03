@@ -6,6 +6,7 @@ import (
 	"guru-game/internal/boardgame/handlers_board"
 	"guru-game/internal/boardgame/service_board"
 	"guru-game/internal/db/repository/boardgame"
+	"guru-game/internal/db/repository/user_states"
 	gamesearchhandlers "guru-game/internal/gamesearch/handlers"
 	gamestatehandlers "guru-game/internal/gamestate/handlers"
 	"guru-game/internal/recommendation"
@@ -17,7 +18,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func SetupRoutes(app *fiber.App) {
+func SetupRoutes(app *fiber.App, userStateRepo user_states.UserStateRepository, boardGameRepo boardgame.BoardGameRepository, gameRuleService *service_board.GameRuleService) {
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("⚠️ Warning: .env file not found")
@@ -36,11 +37,11 @@ func SetupRoutes(app *fiber.App) {
 	log.Println("✅ REST client initialized")
 
 	bgService := service_board.GetBoardgameService()
-	recommendHandler := recommendation.NewHandler(restClient, bgService)
+	// Pass userStateRepo to the recommendation handler constructor
+	recommendHandler := recommendation.NewHandler(restClient, bgService, userStateRepo)
 	log.Println("✅ Recommendation handler initialized")
 
-	// Initialize BoardGameRepository and Handlers
-	boardGameRepo := &boardgame.PostgresBoardgameRepository{} // Assuming Postgres is used
+	// Initialize Boardgame Handlers with BoardgameRepository
 	boardGameHandlers := handlers_board.NewBoardGameHandlers(boardGameRepo)
 
 	// Auth routes
@@ -61,6 +62,8 @@ func SetupRoutes(app *fiber.App) {
 	bg := app.Group("/boardgames")
 	// Apply JWT middleware to potentially get user ID, but handler logic should handle unauthenticated users
 	bg.Get("/", jwt.JWTMiddleware, boardGameHandlers.HandleGetAllBoardGames)
+	bg.Get("/:id", boardGameHandlers.GetBoardGameByIDHandler)
+	bg.Get("/es/:id", boardGameHandlers.GetBoardGameByIDFromESHandler)
 
 	// User Activity routes
 	userActivity := app.Group("/user/activities")
@@ -94,11 +97,16 @@ func SetupRoutes(app *fiber.App) {
 	reco.Get("/actions/user/:user_id", recommendHandler.HandleGetUserActions)
 	reco.Get("/actions/boardgame/:boardgame_id", recommendHandler.HandleGetBoardgameActions)
 
+	// Get user's favorite boardgames directly from DB
+	reco.Get("/favorites/:user_id", recommendHandler.HandleGetFavoritedBoardgames) // Use the new handler
+
 	// Game State Update routes
 	gameState := app.Group("/api/game/updateState")
-	gameState.Post("/", gamestatehandlers.HandleGameStateUpdate)
-	gameState.Put("/", gamestatehandlers.HandleGameStateUpdate)
-	gameState.Patch("/", gamestatehandlers.HandleGameStateUpdate)
+	// Create an instance of GameStateHandlers with the UserStateRepository
+	gameStateHandlersInstance := gamestatehandlers.NewGameStateHandlers(userStateRepo)
+	gameState.Post("/", gameStateHandlersInstance.HandleGameStateUpdate)
+	gameState.Put("/", gameStateHandlersInstance.HandleGameStateUpdate)
+	gameState.Patch("/", gameStateHandlersInstance.HandleGameStateUpdate)
 
 	// Game Search routes
 	gameSearch := app.Group("/api/game/search")

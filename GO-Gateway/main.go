@@ -9,16 +9,18 @@ import (
 
 	"guru-game/internal/db/connection"
 	"guru-game/internal/db/repository/boardgame"
+	"guru-game/internal/db/repository/game_rules"
 	"guru-game/internal/db/repository/user"
+	"guru-game/internal/db/repository/user_states"
 	"guru-game/routes"
-	
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
 func main() {
 	log.Println("🚀 Starting server...")
-	
+
 	app := fiber.New()
 
 	// ตั้งค่า CORS middleware เพื่ออนุญาต frontend จาก localhost:3000
@@ -32,12 +34,24 @@ func main() {
 	// เชื่อมต่อ DB
 	connection.ConnectDB()
 	service_auth.Init(&user.PostgresUserRepository{})
-	service_board.Init(&boardgame.PostgresBoardgameRepository{})
+
+	// Initialize repositories
+	userStateRepo := user_states.NewPostgresUserStateRepository(connection.DB)
+	// Initialize boardGameRepo correctly as an empty struct
+	boardGameRepo := &boardgame.PostgresBoardgameRepository{}
+	gameRuleRepo := game_rules.NewPostgresGameRuleRepository(connection.DB)
+	log.Println("✅ Repositories initialized")
+
+	// Initialize services
+	// Provide the boardGameRepo to the boardgame service
+	service_board.Init(boardGameRepo)
+	gameRuleService := service_board.NewGameRuleService(gameRuleRepo)
 	log.Println("✅ Services initialized")
 
 	// ตั้งค่า routes
 	log.Println("🔧 Setting up routes...")
-	routes.SetupRoutes(app)
+	// Pass the concrete boardGameRepo which satisfies the interface
+	routes.SetupRoutes(app, userStateRepo, boardGameRepo, gameRuleService)
 	log.Println("✅ Routes configured")
 
 	port := os.Getenv("GO_PORT")
@@ -46,5 +60,5 @@ func main() {
 	}
 
 	log.Printf("🚀 Server is running on http://localhost:%s\n", port)
-	log.Fatal(app.Listen(":" + port))  
+	log.Fatal(app.Listen(":" + port))
 }

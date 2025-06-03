@@ -1,8 +1,12 @@
 package recommendation
 
 import (
-	"guru-game/internal/boardgame/service_board"
+	"log"
 	"strconv"
+	"strings"
+
+	"guru-game/internal/boardgame/service_board"
+	"guru-game/internal/db/repository/user_states"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -20,15 +24,17 @@ type RecommendationClient interface {
 
 // Handler handles recommendation-related HTTP requests
 type Handler struct {
-	client    RecommendationClient
-	bgService *service_board.BoardgameService
+	client        RecommendationClient
+	bgService     *service_board.BoardgameService
+	userStateRepo user_states.UserStateRepository
 }
 
 // NewHandler creates a new recommendation handler
-func NewHandler(client RecommendationClient, bgService *service_board.BoardgameService) *Handler {
+func NewHandler(client RecommendationClient, bgService *service_board.BoardgameService, userStateRepo user_states.UserStateRepository) *Handler {
 	return &Handler{
-		client:    client,
-		bgService: bgService,
+		client:        client,
+		bgService:     bgService,
+		userStateRepo: userStateRepo,
 	}
 }
 
@@ -38,7 +44,7 @@ func (h *Handler) HandleSendAllBoardgames(c *fiber.Ctx) error {
 	boardgames, err := h.bgService.GetAllBoardgames()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to get boardgames from database",
+			"error": "failed to get boardgames from database",
 		})
 	}
 
@@ -64,7 +70,7 @@ func (h *Handler) HandleSendAllBoardgames(c *fiber.Ctx) error {
 	// ส่งข้อมูลไปยัง Python service
 	if err := h.client.SendAllBoardgames(recoBoardgames); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to send boardgames to recommendation service",
+			"error": "failed to send boardgames to recommendation service",
 		})
 	}
 
@@ -94,7 +100,7 @@ func (h *Handler) HandleGetRecommendations(c *fiber.Ctx) error {
 	recommendations, err := h.client.GetRecommendations(userID, limit)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to get recommendations",
+			"error": "failed to get recommendations",
 		})
 	}
 
@@ -116,7 +122,7 @@ func (h *Handler) HandleGetPopularBoardgames(c *fiber.Ctx) error {
 	boardgames, err := h.client.GetPopularBoardgames(limit)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to get popular boardgames",
+			"error": "failed to get popular boardgames",
 		})
 	}
 
@@ -130,13 +136,13 @@ func (h *Handler) HandleAddUserAction(c *fiber.Ctx) error {
 	var action UserAction
 	if err := c.BodyParser(&action); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
+			"error": "invalid request body",
 		})
 	}
 
 	if err := h.client.SendUserAction(action); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to add user action",
+			"error": "failed to add user action",
 		})
 	}
 
@@ -145,7 +151,7 @@ func (h *Handler) HandleAddUserAction(c *fiber.Ctx) error {
 	})
 }
 
-// HandleGetUserActions handles getting all actions for a user
+// HandleGetUserActions handles getting all actions for a user, and can filter by action type
 func (h *Handler) HandleGetUserActions(c *fiber.Ctx) error {
 	userID := c.Params("user_id")
 	if userID == "" {
@@ -157,7 +163,20 @@ func (h *Handler) HandleGetUserActions(c *fiber.Ctx) error {
 	actions, err := h.client.GetUserActions(userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to get user actions",
+			"error": "failed to get user actions",
+		})
+	}
+
+	// Check if the route is for favorites and filter actions
+	if strings.Contains(c.Path(), "/favorites/") {
+		filteredActions := []UserAction{}
+		for _, action := range actions {
+			if action.ActionType == "favorite" {
+				filteredActions = append(filteredActions, action)
+			}
+		}
+		return c.JSON(fiber.Map{
+			"actions": filteredActions,
 		})
 	}
 
@@ -178,7 +197,7 @@ func (h *Handler) HandleGetBoardgameActions(c *fiber.Ctx) error {
 	actions, err := h.client.GetBoardgameActions(boardgameID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to get boardgame actions",
+			"error": "failed to get boardgame actions",
 		})
 	}
 
@@ -192,11 +211,63 @@ func (h *Handler) HandleGetAllBoardgamesFromES(c *fiber.Ctx) error {
 	boardgames, err := h.client.GetAllBoardgames()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to get all boardgames from recommendation service",
+			"error": "failed to get all boardgames from recommendation service",
 		})
 	}
 
 	return c.JSON(fiber.Map{
 		"boardgames": boardgames,
+	})
+}
+
+// HandleGetFavoritedBoardgames handles fetching favorited boardgames for a user directly from DB
+func (h *Handler) HandleGetFavoritedBoardgames(c *fiber.Ctx) error {
+	userIDStr := c.Params("user_id")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid user ID format",
+		})
+	}
+
+	favoritedStates, err := h.userStateRepo.GetFavoritedByUserID(c.Context(), userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to get favorited user states",
+		})
+	}
+
+	var favoritedBoardgames []FavoritedBoardgame
+	for _, state := range favoritedStates {
+		boardgame, err := h.bgService.GetBoardGameByID(state.BoardgameID)
+		if err != nil {
+			// Log the error but continue processing other favorites
+			log.Printf("Could not retrieve boardgame ID %d for user %d favorite: %v", state.BoardgameID, userID, err)
+			continue // Skip this favorited item if boardgame details cannot be fetched
+		}
+
+		favoritedBoardgames = append(favoritedBoardgames, FavoritedBoardgame{
+			UserID:          state.UserID,
+			BoardgameID:     state.BoardgameID,
+			Liked:           state.Liked,
+			Favorited:       state.Favorited,
+			Rating:          state.Rating,
+			UpdatedAt:       state.UpdatedAt,
+			Title:           boardgame.Title,
+			Description:     boardgame.Description,
+			MinPlayers:      boardgame.MinPlayers,
+			MaxPlayers:      boardgame.MaxPlayers,
+			PlayTimeMin:     boardgame.PlayTimeMin,
+			PlayTimeMax:     boardgame.PlayTimeMax,
+			Categories:      boardgame.Categories,
+			RatingAvg:       boardgame.RatingAvg,
+			RatingCount:     boardgame.RatingCount,
+			PopularityScore: boardgame.PopularityScore,
+			ImageURL:        boardgame.ImageURL,
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"favorites": favoritedBoardgames,
 	})
 }

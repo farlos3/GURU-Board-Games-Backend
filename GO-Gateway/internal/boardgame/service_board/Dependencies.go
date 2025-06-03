@@ -13,23 +13,28 @@ func Init(r boardgame.BoardGameRepository) {
 }
 
 type BoardgameService struct {
-    repo boardgame.BoardGameRepository
+	repo boardgame.BoardGameRepository
 }
 
 // เพิ่ม constructor function นี้
 func NewBoardgameService(repo boardgame.BoardGameRepository) *BoardgameService {
-    return &BoardgameService{
-        repo: repo,
-    }
+	return &BoardgameService{
+		repo: repo,
+	}
 }
 
 // หรือถ้าต้องการใช้ global repo
 func GetBoardgameService() *BoardgameService {
-    return &BoardgameService{
-        repo: boardGameRepo,
-    }
+	return &BoardgameService{
+		repo: boardGameRepo,
+	}
 }
 
 func (s *BoardgameService) GetAllBoardgames() ([]models.BoardGame, error) {
-    return s.repo.GetAll()
+	return s.repo.GetAll()
+}
+
+// GetBoardGameByID retrieves a boardgame by its ID using the repository
+func (s *BoardgameService) GetBoardGameByID(id int) (*models.BoardGame, error) {
+	return s.repo.GetByID(id)
 }
