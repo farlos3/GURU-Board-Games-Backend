@@ -64,13 +64,7 @@ func (c *RESTRecommendationClient) GetRecommendations(userID string, limit int) 
 		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
 
-	// Log request data in a more readable format
-	log.Printf("\n🚀 ===== API Request to Python ML Service =====\n")
 	log.Printf("📡 URL: %s", url)
-	log.Printf("📦 Request Body:")
-	prettyJSON, _ := json.MarshalIndent(reqBody, "", "    ")
-	log.Printf("%s", string(prettyJSON))
-	log.Printf("===========================================\n")
 
 	agent := fiber.AcquireAgent()
 	defer fiber.ReleaseAgent(agent)
@@ -91,17 +85,8 @@ func (c *RESTRecommendationClient) GetRecommendations(userID string, limit int) 
 	}
 
 	// Log response data in a more readable format
-	log.Printf("\n📥 ===== API Response from Python ML Service =====\n")
+	log.Printf("📥 ===== API Response from Python ML Service =====")
 	log.Printf("📡 Status Code: %d", code)
-	log.Printf("📦 Response Body:")
-	var prettyResponse map[string]interface{}
-	if err := json.Unmarshal(body, &prettyResponse); err == nil {
-		prettyJSON, _ = json.MarshalIndent(prettyResponse, "", "    ")
-		log.Printf("%s", string(prettyJSON))
-	} else {
-		log.Printf("%s", string(body))
-	}
-	log.Printf("===========================================\n")
 
 	if code != fiber.StatusOK {
 		return nil, fmt.Errorf("failed to get recommendations: status %d, body: %s", code, string(body))
@@ -115,14 +100,9 @@ func (c *RESTRecommendationClient) GetRecommendations(userID string, limit int) 
 		return nil, fmt.Errorf("failed to decode response: %v", err)
 	}
 
-	// Log parsed response summary
-	log.Printf("\n✅ ===== Response Summary =====\n")
-	log.Printf("📊 Number of recommended boardgames: %d", len(response.Boardgames))
-	log.Printf("🏷️ Number of categories: %d", len(response.Categories))
 	if len(response.Categories) > 0 {
 		log.Printf("📋 Categories: %v", response.Categories)
 	}
-	log.Printf("================================\n")
 
 	return response.Boardgames, nil
 }

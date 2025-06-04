@@ -283,9 +283,6 @@ func (h *Handler) HandleGetBehaviorBasedRecommendations(c *fiber.Ctx) error {
 		})
 	}
 
-	log.Printf("\n🔍 ===== Processing User Behavior Data =====\n")
-	log.Printf("👤 User ID: %s", userID)
-
 	userIDInt, err := strconv.Atoi(userID)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -299,15 +296,6 @@ func (h *Handler) HandleGetBehaviorBasedRecommendations(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to get user behavior data",
 		})
-	}
-
-	log.Printf("\n📊 User States from Database:")
-	for _, state := range userStates {
-		log.Printf("\n🎮 Boardgame ID: %d", state.BoardgameID)
-		log.Printf("   - Liked: %v", state.Liked)
-		log.Printf("   - Favorited: %v", state.Favorited)
-		log.Printf("   - Rating: %.1f", state.Rating)
-		log.Printf("   - Updated At: %v", state.UpdatedAt)
 	}
 
 	// Prepare user behavior data for ML service
@@ -333,54 +321,35 @@ func (h *Handler) HandleGetBehaviorBasedRecommendations(c *fiber.Ctx) error {
 			action.ActionType = "like"
 			action.ActionValue = 1.0
 			userActions = append(userActions, action)
-			log.Printf("\n👍 User Action - Like:")
-			log.Printf("   - Boardgame ID: %d", state.BoardgameID)
-			log.Printf("   - Action Value: %.1f", action.ActionValue)
-			log.Printf("   - Action Time: %v", action.ActionTime)
 		}
 
 		if state.Favorited {
 			action.ActionType = "favorite"
 			action.ActionValue = 1.0
 			userActions = append(userActions, action)
-			log.Printf("\n⭐ User Action - Favorite:")
-			log.Printf("   - Boardgame ID: %d", state.BoardgameID)
-			log.Printf("   - Action Value: %.1f", action.ActionValue)
-			log.Printf("   - Action Time: %v", action.ActionTime)
 		}
 
 		if state.Rating > 0 {
 			action.ActionType = "rating"
 			action.ActionValue = state.Rating
 			userActions = append(userActions, action)
-			log.Printf("\n⭐ User Action - Rating:")
-			log.Printf("   - Boardgame ID: %d", state.BoardgameID)
-			log.Printf("   - Rating Value: %.1f", action.ActionValue)
-			log.Printf("   - Action Time: %v", action.ActionTime)
 		}
 
 		// Add category information
 		if boardgame.Categories != "" {
-			log.Printf("\n🏷️ Boardgame Categories:")
-			log.Printf("   - Boardgame ID: %d", state.BoardgameID)
-			log.Printf("   - Categories: %s", boardgame.Categories)
-
-			// Split categories string into individual categories
 			categories := strings.Split(boardgame.Categories, ",")
 			for _, category := range categories {
 				category = strings.TrimSpace(category)
 				if category != "" {
 					userCategories = append(userCategories, category)
-					log.Printf("   - Added Category: %s", category)
 				}
 			}
 		}
 	}
 
-	log.Printf("\n📝 Final Data to be sent to Python ML Service:")
+	log.Printf("📝 Final Data to be sent to Python ML Service:")
 	log.Printf("Total User Actions: %d", len(userActions))
 	log.Printf("Total Categories: %d", len(userCategories))
-	log.Printf("Unique Categories: %v", userCategories)
 
 	// Get limit parameter
 	limitStr := c.Query("limit", "10")
@@ -391,7 +360,7 @@ func (h *Handler) HandleGetBehaviorBasedRecommendations(c *fiber.Ctx) error {
 		})
 	}
 
-	log.Printf("\n🎯 Requesting %d recommendations from ML service", limit)
+	log.Printf("🎯 Requesting %d recommendations from ML service", limit)
 
 	// Get recommendations from ML service
 	recommendations, err := h.client.GetRecommendations(userID, limit)
@@ -403,7 +372,6 @@ func (h *Handler) HandleGetBehaviorBasedRecommendations(c *fiber.Ctx) error {
 	}
 
 	log.Printf("✅ Successfully received %d recommendations", len(recommendations))
-	log.Printf("===========================================\n")
 
 	// Return only the recommended boardgames
 	return c.JSON(fiber.Map{

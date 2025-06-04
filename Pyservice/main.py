@@ -76,8 +76,7 @@ async def get_recommendations(request: RecommendationRequest):
             user_categories=request.user_categories
         )
         
-        logger.info(f"✅ Generated {len(recommendations)} recommendations")
-        logger.info("===========================================\n")
+        logger.info(f"✅ Generated recommendations succesfully")
         
         # Return only the recommended boardgames
         return {"boardgames": recommendations}

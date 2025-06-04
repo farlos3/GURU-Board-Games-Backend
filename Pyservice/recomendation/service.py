@@ -32,6 +32,39 @@ class Boardgame(BaseModel):
     popularity_score: float
     image_url: str
 
+# Define weights for different user actions and scoring components
+ACTION_WEIGHTS = {
+    "like": 1.0,
+    "favorite": 2,
+    "rating_multiplier": 0.5, 
+    "category_match": 3.0,
+    "player_count_match": 0.2,
+    "play_time_match": 0.2,
+    "rating_avg_consideration": 1,
+    "popularity_consideration": 0,
+    "similarity_impact": 2.0 # Weight for the similarity-based score component
+}
+
+# Helper function to calculate similarity between two boardgames (based on categories)
+def calculate_similarity(bg1: Boardgame, bg2: Boardgame) -> float:
+    """Calculates similarity between two boardgames based on categories (Jaccard Index)."""
+    if not bg1.categories or not bg2.categories:
+        return 0.0 # No categories, no similarity based on this
+
+    categories1 = set([cat.strip() for cat in bg1.categories.split(",") if cat.strip()])
+    categories2 = set([cat.strip() for cat in bg2.categories.split(",") if cat.strip()])
+
+    if not categories1 or not categories2:
+        return 0.0 # One or both have no valid categories
+
+    intersection = categories1.intersection(categories2)
+    union = categories1.union(categories2)
+
+    if not union:
+        return 0.0 # Should not happen if both sets are not empty, but just in case
+
+    return len(intersection) / len(union)
+
 class RecommendationService:
     def __init__(self):
         self.boardgames: List[Boardgame] = []
@@ -40,6 +73,7 @@ class RecommendationService:
         try:
             create_indices()
             logger.info("✅ Elasticsearch indices created successfully")
+            print("==========================================================================================")
         except Exception as e:
             logger.error(f"❌ Failed to create Elasticsearch indices: {e}")
 
@@ -128,7 +162,6 @@ class RecommendationService:
             for hit in response['hits']['hits']:
                 actions.append(UserAction(**hit['_source']))
             
-            logger.info(f"✅ Retrieved {len(actions)} actions for user {user_id}")
             return actions
         except Exception as e:
             logger.error(f"❌ Error getting user actions: {e}")
@@ -162,158 +195,169 @@ class RecommendationService:
             return []
 
     def get_recommendations(
-        self, 
-        user_id: str, 
+        self,
+        user_id: str,
         limit: int = 10,
         user_actions: Optional[List[UserAction]] = None,
         user_categories: Optional[List[str]] = None
     ) -> List[Boardgame]:
         """Get boardgame recommendations for a user based on their behavior"""
         try:
-            logger.info(f"\n🔍 ===== Generating Recommendations for User {user_id} =====")
-            
+            print(f"\n🔍 ===== Generating Recommendations for User {user_id} =====")
+
             # Get user's actions from Elasticsearch if not provided
             if user_actions is None:
                 user_actions = self.get_user_actions(user_id)
-            logger.info(f"📊 Found {len(user_actions)} user actions")
-            
+
             # Get all boardgames
             all_boardgames = self.get_all_boardgames()
             logger.info(f"🎲 Total boardgames in system: {len(all_boardgames)}")
-            
+
             if len(all_boardgames) == 0:
                 logger.error("❌ No boardgames found in the system!")
                 return []
-            
-            # Log some sample boardgames
-            logger.info("\n📋 Sample Boardgames:")
-            for bg in all_boardgames[:3]:
-                logger.info(f"  - ID: {bg.id}, Title: {bg.title}, Categories: {bg.categories}")
-            
-            # Create a scoring dictionary for boardgames
-            boardgame_scores = {}
-            
-            # Process user actions to build preferences
+
+            # Create a dictionary for quick lookup of Boardgame objects by ID
+            boardgame_by_id = {str(bg.id): bg for bg in all_boardgames}
+
+            # Calculate preference score for each boardgame the user has interacted with
+            user_boardgame_preference_scores = {}
             user_preferences = {
                 'categories': set(user_categories) if user_categories else set(),
                 'player_counts': set(),
                 'play_times': set(),
-                'ratings': {}
-            }
-            
-            logger.info("\n👤 User Preferences:")
-            logger.info(f"Initial Categories: {user_preferences['categories']}")
-            
+            } # Ratings are now directly used for preference score
+
             for action in user_actions:
-                logger.info(f"\n📝 Processing action: {action.action_type} for boardgame {action.boardgame_id}")
-                
-                # Find the corresponding boardgame
-                boardgame = next((bg for bg in all_boardgames if str(bg.id) == action.boardgame_id), None)
+                bg_id_str = action.boardgame_id
+                boardgame = boardgame_by_id.get(bg_id_str)
+
                 if not boardgame:
-                    logger.warning(f"⚠️ Boardgame {action.boardgame_id} not found")
+                    logger.warning(f"⚠️ Boardgame {bg_id_str} from user action not found in all_boardgames")
                     continue
-                
-                logger.info(f"Found boardgame: {boardgame.title}")
-                
-                # Update user preferences based on action
+
+                logger.info(f"📝 Processing action: {action.action_type} for boardgame {boardgame.title}")
+
+                # Update user preferences (for characteristic matching)
                 if action.action_type == "like" or action.action_type == "favorite":
-                    # Add categories to preferences if not already provided
                     if not user_categories and boardgame.categories:
-                        categories = [cat.strip() for cat in boardgame.categories.split(",")]
+                        categories = [cat.strip() for cat in boardgame.categories.split(",") if cat.strip()]
                         user_preferences['categories'].update(categories)
-                        logger.info(f"🏷️ Added categories to preferences: {categories}")
-                    
-                    # Add player count range
+                        logger.info(f"  🏷️ Added categories to preferences: {categories}")
+
                     user_preferences['player_counts'].add(boardgame.min_players)
                     user_preferences['player_counts'].add(boardgame.max_players)
-                    logger.info(f"👥 Added player count range: {boardgame.min_players}-{boardgame.max_players}")
-                    
-                    # Add play time range
+                    logger.info(f"  👥 Added player count range: {boardgame.min_players}-{boardgame.max_players}")
+
                     user_preferences['play_times'].add(boardgame.play_time_min)
                     user_preferences['play_times'].add(boardgame.play_time_max)
-                    logger.info(f"⏱️ Added play time range: {boardgame.play_time_min}-{boardgame.play_time_max}")
-                
-                elif action.action_type == "rating":
-                    # Store rating for this boardgame
-                    user_preferences['ratings'][action.boardgame_id] = action.action_value
-                    logger.info(f"⭐ Stored rating: {action.action_value} for boardgame {action.boardgame_id}")
-            
-            logger.info("\n📊 User Preferences Summary:")
-            logger.info(f"Categories: {user_preferences['categories']}")
-            logger.info(f"Player Counts: {user_preferences['player_counts']}")
-            logger.info(f"Play Times: {user_preferences['play_times']}")
-            logger.info(f"Ratings: {user_preferences['ratings']}")
-            
-            # Score each boardgame based on user preferences
-            logger.info("\n🎯 Scoring Boardgames:")
+                    logger.info(f"  ⏱️ Added play time range: {boardgame.play_time_min}-{boardgame.play_time_max}")
+
+                # Calculate preference score for this specific boardgame based on actions
+                current_preference_score = user_boardgame_preference_scores.get(bg_id_str, 0.0)
+                if action.action_type == "like":
+                    current_preference_score += ACTION_WEIGHTS["like"]
+                    logger.info(f"  👍 Added {ACTION_WEIGHTS['like']} for like action")
+                elif action.action_type == "favorite":
+                    current_preference_score += ACTION_WEIGHTS["favorite"]
+                    logger.info(f"  ⭐ Added {ACTION_WEIGHTS['favorite']} for favorite action")
+                elif action.action_type == "rating" and action.action_value > 0:
+                    rating_score = ACTION_WEIGHTS["rating_multiplier"] * (action.action_value / 5.0)
+                    current_preference_score += rating_score
+                    logger.info(f"  ⭐ Added {rating_score:.2f} for rating {action.action_value}")
+
+                user_boardgame_preference_scores[bg_id_str] = current_preference_score
+                logger.info(f"  Current preference score for {boardgame.title}: {current_preference_score:.2f}")
+
+            # Score each boardgame based on user preferences and similarity
+            boardgame_scores = {}
+            interacted_boardgame_ids = set(user_boardgame_preference_scores.keys())
+
             for boardgame in all_boardgames:
-                score = 0.0
-                
-                # Skip boardgames the user has already interacted with
-                if str(boardgame.id) in [action.boardgame_id for action in user_actions]:
+                bg_id_str = str(boardgame.id)
+
+                # Skip boardgames the user has already interacted with (don't recommend them again)
+                if bg_id_str in interacted_boardgame_ids:
                     logger.info(f"Skipping boardgame {boardgame.id} (already interacted)")
                     continue
-                
-                logger.info(f"\nScoring boardgame {boardgame.id} - {boardgame.title}")
-                
-                # Category matching (weight: 2.0)
+
+                score = 0.0
+
+                # --- 1. Characteristic-Based Scoring (Existing Logic) ---
+
+                # Category matching
                 if boardgame.categories and user_preferences['categories']:
-                    categories = [cat.strip() for cat in boardgame.categories.split(",")]
-                    matching_categories = user_preferences['categories'].intersection(set(categories))
-                    if matching_categories:
-                        category_score = 2.0 * (len(matching_categories) / len(categories))
-                        score += category_score
-                        logger.info(f"🎯 Category match: {matching_categories} (score: {category_score:.2f})")
-                
-                # Player count matching (weight: 1.5)
+                    categories = set([cat.strip() for cat in boardgame.categories.split(",") if cat.strip()])
+                    if categories:
+                        matching_categories = user_preferences['categories'].intersection(categories)
+                        if matching_categories:
+                            # Use min of boardgame categories or user preferred categories count for denominator
+                            # to avoid division by zero or very small numbers if user_preferences['categories'] is small
+                            denominator = min(len(categories), len(user_preferences['categories'])) if min(len(categories), len(user_preferences['categories'])) > 0 else 1
+                            category_score = ACTION_WEIGHTS["category_match"] * (len(matching_categories) / denominator)
+                            score += category_score
+                            logger.info(f"  🎯 Category match: {matching_categories} (score: {category_score:.2f})")
+
+
+                # Player count matching
                 if user_preferences['player_counts']:
-                    min_players_match = any(boardgame.min_players <= count <= boardgame.max_players 
+                    min_players_match = any(boardgame.min_players <= count <= boardgame.max_players
                                          for count in user_preferences['player_counts'])
                     if min_players_match:
-                        score += 0.5
-                        logger.info(f"👥 Player count match (score: 1.50)")
-                
-                # Play time matching (weight: 1.5)
+                        score += ACTION_WEIGHTS["player_count_match"]
+                        logger.info(f"  👥 Player count match (score: {ACTION_WEIGHTS['player_count_match']:.2f})")
+
+                # Play time matching
                 if user_preferences['play_times']:
-                    play_time_match = any(boardgame.play_time_min <= time <= boardgame.play_time_max 
+                    play_time_match = any(boardgame.play_time_min <= time <= boardgame.play_time_max
                                        for time in user_preferences['play_times'])
                     if play_time_match:
-                        score += 0.5
-                        logger.info(f"⏱️ Play time match (score: 1.50)")
-                
-                # Rating consideration (weight: 1.0)
+                        score += ACTION_WEIGHTS["play_time_match"]
+                        logger.info(f"  ⏱️ Play time match (score: {ACTION_WEIGHTS['play_time_match']:.2f})")
+
+                # Rating consideration
                 if boardgame.rating_avg > 0:
-                    rating_score = 0.5 * (boardgame.rating_avg / 5.0)
+                    rating_score = ACTION_WEIGHTS["rating_avg_consideration"] * (boardgame.rating_avg / 5.0)
                     score += rating_score
-                    logger.info(f"⭐ Rating consideration: {boardgame.rating_avg} (score: {rating_score:.2f})")
-                
-                # Popularity consideration (weight: 1.0)
+
+                # Popularity consideration
                 if boardgame.popularity_score > 0:
-                    popularity_score = 0.5 * (boardgame.popularity_score / 100.0)
+                    popularity_score = ACTION_WEIGHTS["popularity_consideration"] * (boardgame.popularity_score / 100.0)
                     score += popularity_score
-                    logger.info(f"🔥 Popularity consideration: {boardgame.popularity_score} (score: {popularity_score:.2f})")
-                
-                boardgame_scores[boardgame.id] = score
-                logger.info(f"Total score: {score:.2f}")
-            
+
+                # --- 2. Similarity-Based Scoring (New Logic) ---
+                similarity_score_component = 0.0
+                if user_boardgame_preference_scores:
+                    logger.info("  Calculating similarity-based score component:")
+                    for interacted_bg_id_str, preference_score in user_boardgame_preference_scores.items():
+                        interacted_boardgame = boardgame_by_id.get(interacted_bg_id_str)
+                        if interacted_boardgame:
+                            similarity = calculate_similarity(boardgame, interacted_boardgame)
+                            similarity_score_component += similarity * preference_score * ACTION_WEIGHTS["similarity_impact"]
+                            # logger.info(f"    Similarity with {interacted_boardgame.title} ({interacted_bg_id_str}): {similarity:.2f}, Preference Score: {preference_score:.2f}, Component: {similarity * preference_score * ACTION_WEIGHTS['similarity_impact']:.2f}") # Too verbose
+
+                score += similarity_score_component
+                if similarity_score_component > 0:
+                     logger.info(f"  ✨ Similarity-based score component added: {similarity_score_component:.2f}")
+
+
+                boardgame_scores[bg_id_str] = score
+
             # Sort boardgames by score
             sorted_boardgames = sorted(boardgame_scores.items(), key=lambda x: x[1], reverse=True)
 
-            # สร้าง dictionary สำหรับค้นหา Boardgame object จาก ID ได้ง่ายๆ
-            boardgame_by_id = {str(bg.id): bg for bg in all_boardgames} # ใช้ str(bg.id) ให้ตรงกับ key ใน boardgame_scores
-
             recommendations = []
-            for boardgame_id, score in sorted_boardgames[:limit]:
-                # ดึง Boardgame object จาก dictionary
-                boardgame = boardgame_by_id.get(str(boardgame_id))
+            logger.info(f"✅ Generated {len(sorted_boardgames[:limit])} recommendations")
+            for boardgame_id_str, score in sorted_boardgames[:limit]:
+                # Retrieve the full Boardgame object using the ID
+                boardgame = boardgame_by_id.get(boardgame_id_str)
                 if boardgame:
                     recommendations.append(boardgame)
-                    # แก้ไขบรรทัด log ให้ใช้ boardgame object ที่ถูกต้อง
-                    logger.info(f"{len(recommendations)}. Boardgame {boardgame.id} - {boardgame.title} - Score: {score:.2f}")
+                    logger.info(f"Boardgame {boardgame.id} - {boardgame.title} - Score: {score:.2f}")
 
-            logger.info("===========================================\n")
+            logger.info("===========================================")
             return recommendations
-            
+
         except Exception as e:
             logger.error(f"❌ Error getting recommendations: {e}")
             logger.exception("Detailed error:")
