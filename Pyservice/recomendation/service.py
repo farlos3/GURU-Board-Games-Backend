@@ -65,6 +65,48 @@ def calculate_similarity(bg1: Boardgame, bg2: Boardgame) -> float:
 
     return len(intersection) / len(union)
 
+def preprocess_categories(categories: str) -> str:
+    """Preprocess categories string to ensure consistent format.
+    
+    Args:
+        categories: Comma-separated string of categories
+        
+    Returns:
+        Preprocessed categories string
+    """
+    if not categories:
+        return ""
+        
+    # Split by comma and clean each category
+    category_list = [cat.strip().lower() for cat in categories.split(',')]
+    
+    # Remove empty categories and duplicates
+    category_list = list(set(filter(None, category_list)))
+    
+    # Sort categories for consistency
+    category_list.sort()
+    
+    # Join back with comma
+    return ','.join(category_list)
+
+def preprocess_boardgame(boardgame: Boardgame) -> Boardgame:
+    """Preprocess boardgame data before indexing.
+    
+    Args:
+        boardgame: Boardgame object to preprocess
+        
+    Returns:
+        Preprocessed Boardgame object
+    """
+    # Create a copy of the boardgame to avoid modifying the original
+    processed = boardgame.copy()
+    
+    # Preprocess categories
+    if processed.categories:
+        processed.categories = preprocess_categories(processed.categories)
+    
+    return processed
+
 class RecommendationService:
     def __init__(self):
         self.boardgames: List[Boardgame] = []
@@ -369,12 +411,16 @@ class RecommendationService:
             self.boardgames = boardgames
             # อัพเดทข้อมูลใน Elasticsearch
             for bg in boardgames:
+                # Preprocess boardgame data before indexing
+                processed_bg = preprocess_boardgame(bg)
+                
                 response = client.index(
                     index=boardgame_index_name,
-                    id=str(bg.id),
-                    body=bg.dict()
+                    id=str(processed_bg.id),
+                    body=processed_bg.dict()
                 )
-                logger.info(f"✅ Boardgame {bg.id} updated in Elasticsearch: {response['_id']}")
+                logger.info(f"✅ Boardgame {processed_bg.id} updated in Elasticsearch: {response['_id']}")
+                logger.info(f"  Categories: {processed_bg.categories}")
             return True
         except Exception as e:
             logger.error(f"❌ Error updating boardgames: {e}")
@@ -434,6 +480,8 @@ class RecommendationService:
 # Create a singleton instance
 recommendation_service = RecommendationService()
 
+# แก้ไขฟังก์ชัน search_boardgames ในส่วนการจัดการ categories filter
+
 def search_boardgames(
     search_query: Optional[str] = None,
     player_count: Optional[int] = None,
@@ -442,133 +490,191 @@ def search_boardgames(
     limit: int = 10,
     page: int = 1
 ) -> List[Boardgame]:
-    """Search boardgames with improved query logic (works with existing mapping)."""
+    """Search boardgames with fuzzy search and flexible OR logic for better results."""
     try:
         query = {
             "bool": {
-                "must": [],
-                "should": [],
+                "must": [],  # Changed from should to must for AND logic
+                "filter": [],  # Use filter for exact constraints
                 "minimum_should_match": 0
             }
         }
 
+        # Text search with fuzzy matching for title only (from code 2)
         if search_query:
             search_query = search_query.strip()
             
-            if len(search_query) <= 2:
-                # สำหรับคำสั้น ใช้หลายกลยุทธ์
-                query["bool"]["should"].extend([
-                    # Wildcard search - หาทุกที่ในชื่อ
-                    {
-                        "wildcard": {
-                            "title": {
-                                "value": f"*{search_query.lower()}*",
-                                "boost": 3,
-                                "case_insensitive": True
-                            }
-                        }
-                    },
-                    # Prefix search - หาคำที่ขึ้นต้น
-                    {
-                        "prefix": {
-                            "title": {
-                                "value": search_query.lower(),
-                                "boost": 2,
-                                "case_insensitive": True
-                            }
-                        }
-                    },
-                    # Fuzzy search - รองรับ typo
-                    {
-                        "fuzzy": {
-                            "title": {
-                                "value": search_query,
-                                "fuzziness": "AUTO",
-                                "boost": 1
-                            }
-                        }
-                    },
-                    # Match search - หาใน description และ categories
-                    {
-                        "multi_match": {
-                            "query": search_query,
-                            "fields": ["description^0.5", "categories^1"],
-                            "fuzziness": "AUTO",
-                            "boost": 0.5
-                        }
-                    }
-                ])
-                query["bool"]["minimum_should_match"] = 1
-            else:
-                # สำหรับคำยาว ใช้ multi_match หลัก
-                query["bool"]["must"].append({
-                    "multi_match": {
+            # Text search with fuzzy matching for title only
+            text_queries = []
+            
+            # 1. Exact phrase match (highest priority)
+            text_queries.append({
+                "match_phrase": {
+                    "title": {
                         "query": search_query,
-                        "fields": [
-                            "title^4",        # น้ำหนักสูงสุดให้ title
-                            "description^1",   # น้ำหนักปกติให้ description
-                            "categories^2"     # น้ำหนักสูงให้ categories
-                        ],
-                        "fuzziness": "AUTO",
-                        "operator": "or",
-                        "minimum_should_match": "75%"
+                        "boost": 5
                     }
-                })
+                }
+            })
+            
+            # 2. Fuzzy match on title
+            text_queries.extend([
+                {
+                    "fuzzy": {
+                        "title": {
+                            "value": search_query,
+                            "fuzziness": "AUTO",
+                            "prefix_length": 0,
+                            "max_expansions": 50,
+                            "boost": 4
+                        }
+                    }
+                },
+                {
+                    "wildcard": {
+                        "title": {
+                            "value": f"*{search_query.lower()}*",
+                            "case_insensitive": True,
+                            "boost": 3
+                        }
+                    }
+                },
+                {
+                    "prefix": {
+                        "title": {
+                            "value": search_query.lower(),
+                            "case_insensitive": True,
+                            "boost": 2
+                        }
+                    }
+                }
+            ])
+            
+            # Add all text queries to must clause (AND logic for title search)
+            query["bool"]["must"].extend(text_queries)
+            query["bool"]["minimum_should_match"] = 1
 
-        # Player count filter
+        # Player count filter - use as filter for exact constraint (from code 2)
         if player_count is not None and player_count > 0:
-            query["bool"]["must"].extend([
+            query["bool"]["filter"].extend([
                 {"range": {"min_players": {"lte": player_count}}},
                 {"range": {"max_players": {"gte": player_count}}}
             ])
 
-        # Play time filter  
+        # Play time filter - use as filter for exact constraint (from code 2)
         if play_time is not None and play_time > 0:
-            query["bool"]["must"].extend([
+            query["bool"]["filter"].extend([
                 {"range": {"play_time_min": {"lte": play_time}}},
                 {"range": {"play_time_max": {"gte": play_time}}}
             ])
 
-        # Categories filter
+        # Categories filter - Enhanced fuzzy matching with OR logic (from code 1)
         if categories:
             # Convert categories to list if it's a string
             if isinstance(categories, str):
                 try:
-                    # Try to parse as JSON if it's a string representation of a list
                     import json
                     categories = json.loads(categories)
                 except json.JSONDecodeError:
-                    # If not JSON, treat as comma-separated string
                     categories = [cat.strip() for cat in categories.split(',')]
             
-            # Clean up categories - remove any JSON-like formatting
+            # Clean up categories
             cleaned_categories = []
             for cat in categories:
                 if isinstance(cat, str):
-                    # Remove any JSON-like formatting
-                    cat = cat.strip('[]"\'')
+                    cat = cat.strip('[]"\'').lower()
                     if cat:
-                        cleaned_categories.append(cat.lower())
+                        cleaned_categories.append(cat)
             
             if cleaned_categories:
+                logger.info(f"🏷️ Searching for categories with fuzzy AND logic: {cleaned_categories}")
+                
+                # Create category queries for AND matching
+                category_queries = []
+                
+                for cat in cleaned_categories:
+                    # Multiple fuzzy strategies for each category
+                    cat_strategies = [
+                        # Exact match (highest priority)
+                        {
+                            "term": {
+                                "categories.keyword": {
+                                    "value": cat,
+                                    "case_insensitive": True,
+                                    "boost": 5
+                                }
+                            }
+                        },
+                        # Phrase match
+                        {
+                            "match_phrase": {
+                                "categories": {
+                                    "query": cat,
+                                    "boost": 4
+                                }
+                            }
+                        },
+                        # Fuzzy match with different fuzziness levels
+                        {
+                            "match": {
+                                "categories": {
+                                    "query": cat,
+                                    "fuzziness": "AUTO",
+                                    "boost": 3
+                                }
+                            }
+                        },
+                        {
+                            "match": {
+                                "categories": {
+                                    "query": cat,
+                                    "fuzziness": "1",
+                                    "boost": 2.5
+                                }
+                            }
+                        },
+                        # Wildcard for partial matches
+                        {
+                            "wildcard": {
+                                "categories": {
+                                    "value": f"*{cat}*",
+                                    "case_insensitive": True,
+                                    "boost": 2
+                                }
+                            }
+                        },
+                        # Prefix match
+                        {
+                            "prefix": {
+                                "categories": {
+                                    "value": cat,
+                                    "case_insensitive": True,
+                                    "boost": 2
+                                }
+                            }
+                        }
+                    ]
+                    
+                    # Add all strategies for this category
+                    category_queries.extend(cat_strategies)
+                
+                # Add category queries to must clause (AND logic)
                 query["bool"]["must"].append({
                     "bool": {
-                        "should": [
-                            {"terms": {"categories": cleaned_categories}},
-                            {"match": {"categories": " ".join(cleaned_categories)}}
-                        ],
-                        "minimum_should_match": 1
+                        "must": category_queries
                     }
                 })
+                
+                logger.info(f"🔍 Added {len(category_queries)} category queries with AND logic")
 
-        # Handle empty query - แสดงเกมยอดนิยม
-        if not query["bool"]["must"] and not query["bool"]["should"]:
+        # Handle empty query - show popular games
+        if not query["bool"]["must"] and not query["bool"]["filter"]:
             query = {"match_all": {}}
 
         # Calculate pagination
         from_ = max(0, (page - 1) * limit)
 
-        # Execute search
+        # Execute search with enhanced scoring
         response = client.search(
             index=boardgame_index_name,
             body={
@@ -576,26 +682,40 @@ def search_boardgames(
                 "size": limit,
                 "from": from_,
                 "sort": [
+                    # Primary sort by relevance score
                     {"_score": {"order": "desc"}},
+                    # Secondary sort by popularity
                     {"popularity_score": {"order": "desc", "missing": "_last"}},
-                    {"rating_avg": {"order": "desc", "missing": "_last"}}
+                    # Tertiary sort by rating
+                    {"rating_avg": {"order": "desc", "missing": "_last"}},
+                    # Final sort by ID for consistency
+                    {"id": {"order": "asc"}}
                 ],
-                # เพิ่ม highlighting เพื่อดูว่าตรงกับอะไร
+                # Add highlighting to see what matched
                 "highlight": {
                     "fields": {
                         "title": {
                             "pre_tags": ["<mark>"],
                             "post_tags": ["</mark>"],
-                            "fragment_size": 150
+                            "fragment_size": 150,
+                            "number_of_fragments": 1
+                        },
+                        "categories": {
+                            "pre_tags": ["<mark>"],
+                            "post_tags": ["</mark>"],
+                            "fragment_size": 150,
+                            "number_of_fragments": 3
                         },
                         "description": {
                             "pre_tags": ["<mark>"],
                             "post_tags": ["</mark>"],
-                            "fragment_size": 150,
+                            "fragment_size": 200,
                             "number_of_fragments": 1
                         }
                     }
-                }
+                },
+                # Add explanation for debugging (can be removed in production)
+                "explain": False
             }
         )
 
@@ -603,33 +723,189 @@ def search_boardgames(
         for hit in response['hits']['hits']:
             boardgame_data = hit['_source']
             
-            # เพิ่มข้อมูล debug
+            # Add search metadata for debugging
             boardgame_data['_search_score'] = hit['_score']
             if 'highlight' in hit:
                 boardgame_data['_highlights'] = hit['highlight']
                 
-            boardgames.append(boardgame_data)
+            # Convert back to Boardgame object
+            try:
+                boardgame = Boardgame(**boardgame_data)
+                boardgames.append(boardgame)
+            except Exception as e:
+                logger.warning(f"⚠️ Error creating Boardgame object: {e}")
+                # Continue with raw data if object creation fails
+                boardgames.append(boardgame_data)
 
-        logger.info(f"✅ Search completed: query='{search_query}', player_count={player_count}, play_time={play_time}, categories={categories}, results={len(boardgames)}")
+        # Enhanced logging
+        search_type = "fuzzy AND" if (search_query or categories) else "popular"
+        logger.info(f"✅ {search_type.upper()} search completed: query='{search_query}', player_count={player_count}, play_time={play_time}, categories={categories}, results={len(boardgames)}")
         
-        # Debug logging สำหรับกรณีไม่เจอผลลัพธ์
-        if len(boardgames) == 0:
-            logger.warning(f"⚠️ No results found. Query used: {query}")
+        # Log top results for debugging
+        if boardgames and len(boardgames) > 0:
+            logger.info("🎯 Top search results:")
+            for i, bg in enumerate(boardgames[:3]):  # Show top 3
+                if isinstance(bg, dict):
+                    title = bg.get('title', 'Unknown')
+                    score = bg.get('_search_score', 0)
+                    cats = bg.get('categories', '')
+                else:
+                    title = bg.title
+                    score = getattr(bg, '_search_score', 0)
+                    cats = bg.categories
+                
+                logger.info(f"  {i+1}. {title} (Score: {score:.2f}, Categories: {cats})")
+        
+        # Helpful suggestion if no results
+        if len(boardgames) == 0 and (search_query or categories):
+            logger.info("💡 No results found. Try:")
+            logger.info("  - Using broader search terms")
+            logger.info("  - Checking spelling")
+            logger.info("  - Searching for partial category names")
             
-            # ลองค้นหาแบบง่ายๆ เพื่อดูว่ามีข้อมูลหรือไม่
-            if search_query:
-                debug_response = client.search(
-                    index=boardgame_index_name,
-                    body={
-                        "query": {"match_all": {}},
-                        "size": 3
-                    }
-                )
-                logger.info(f"Sample data in index: {[hit['_source'].get('title', 'No title') for hit in debug_response['hits']['hits']]}")
+            # Show available categories for reference
+            if categories:
+                available_cats = get_all_categories()[:10]  # Show first 10
+                logger.info(f"  - Available categories include: {', '.join(available_cats)}")
 
         return boardgames
 
     except Exception as e:
-        logger.error(f"❌ Search error: {str(e)}")
+        logger.error(f"❌ Fuzzy search error: {str(e)}")
         logger.error(f"Query that caused error: {query if 'query' in locals() else 'Query not constructed'}")
         return []
+    
+def find_similar_categories(search_categories: List[str], limit: int = 5) -> List[str]:
+    """Find categories similar to the search terms using fuzzy matching"""
+    try:
+        similar_cats = []
+        
+        for search_cat in search_categories:
+            response = client.search(
+                index=boardgame_index_name,
+                body={
+                    "size": 0,
+                    "aggs": {
+                        "similar_categories": {
+                            "terms": {
+                                "field": "categories.keyword",
+                                "include": f".*{search_cat.lower()}.*",
+                                "size": limit
+                            }
+                        }
+                    }
+                }
+            )
+            
+            if 'aggregations' in response and 'similar_categories' in response['aggregations']:
+                for bucket in response['aggregations']['similar_categories']['buckets']:
+                    if bucket['key'] not in similar_cats:
+                        similar_cats.append(bucket['key'])
+        
+        return similar_cats[:limit]
+        
+    except Exception as e:
+        logger.error(f"❌ Error finding similar categories: {e}")
+        return []
+    
+# Enhanced function to get category suggestions
+def get_category_suggestions(partial_category: str, limit: int = 10) -> List[str]:
+    """Get category suggestions based on partial input with fuzzy matching"""
+    try:
+        # Use multiple strategies to find matching categories
+        strategies = [
+            # Prefix match
+            {"prefix": {"categories.keyword": {"value": partial_category.lower(), "case_insensitive": True}}},
+            # Wildcard match
+            {"wildcard": {"categories.keyword": {"value": f"*{partial_category.lower()}*", "case_insensitive": True}}},
+            # Fuzzy match
+            {"fuzzy": {"categories.keyword": {"value": partial_category.lower(), "fuzziness": "AUTO"}}}
+        ]
+        
+        all_suggestions = set()
+        
+        for strategy in strategies:
+            response = client.search(
+                index=boardgame_index_name,
+                body={
+                    "query": strategy,
+                    "size": 0,
+                    "aggs": {
+                        "categories": {
+                            "terms": {
+                                "field": "categories.keyword",
+                                "size": limit * 2  # Get more to filter later
+                            }
+                        }
+                    }
+                }
+            )
+            
+            if 'aggregations' in response and 'categories' in response['aggregations']:
+                for bucket in response['aggregations']['categories']['buckets']:
+                    all_suggestions.add(bucket['key'])
+        
+        # Sort suggestions by relevance (those that start with the partial term first)
+        suggestions = list(all_suggestions)
+        suggestions.sort(key=lambda x: (
+            0 if x.lower().startswith(partial_category.lower()) else 1,  # Prefix matches first
+            len(x),  # Shorter terms first within each group
+            x.lower()  # Alphabetical
+        ))
+        
+        return suggestions[:limit]
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting category suggestions: {e}")
+        return []
+
+# เพิ่มฟังก์ชันสำหรับดูข้อมูล categories ทั้งหมดในระบบ
+def get_all_categories() -> List[str]:
+    """Get all unique categories from the system for debugging"""
+    try:
+        # ใช้ aggregation เพื่อดู categories ทั้งหมด
+        response = client.search(
+            index=boardgame_index_name,
+            body={
+                "size": 0,
+                "aggs": {
+                    "categories": {
+                        "terms": {
+                            "field": "categories.keyword",
+                            "size": 100
+                        }
+                    }
+                }
+            }
+        )
+        
+        categories = []
+        if 'aggregations' in response and 'categories' in response['aggregations']:
+            for bucket in response['aggregations']['categories']['buckets']:
+                categories.append(bucket['key'])
+        
+        logger.info(f"📋 All categories in system: {categories}")
+        return categories
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting categories: {e}")
+        return []
+
+
+# เพิ่มฟังก์ชันสำหรับตรวจสอบ mapping ของ categories field
+def check_categories_mapping():
+    """Check the mapping of categories field"""
+    try:
+        mapping_response = client.indices.get_mapping(
+            index=boardgame_index_name
+        )
+        
+        logger.info("🗺️ Categories field mapping:")
+        categories_mapping = mapping_response[boardgame_index_name]['mappings']['properties'].get('categories', {})
+        logger.info(f"  {categories_mapping}")
+        
+        return categories_mapping
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking mapping: {e}")
+        return {}
