@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from .indexing import create_indices
 from .setting import boardgame_index_name, user_action_index_name
 from connection.connection import client
+from typing import Optional, List, Union
 
 # ตั้งค่า logging
 logging.basicConfig(level=logging.INFO)
@@ -488,37 +489,44 @@ def search_boardgames(
     play_time: Optional[int] = None,
     categories: Optional[List[str]] = None,
     limit: int = 10,
-    page: int = 1
+    page: int = 1,
+    search_logic: str = "OR",  # OR logic for text search
+    category_logic: str = "AND"  # AND logic for categories
 ) -> List[Boardgame]:
-    """Search boardgames with fuzzy search and flexible OR logic for better results."""
+    """
+    Search boardgames with flexible AND/OR logic for different search components.
+    
+    Args:
+        search_logic: "OR" or "AND" - logic for text search terms
+        category_logic: "OR" or "AND" - logic between categories
+    """
     try:
         query = {
             "bool": {
-                "must": [],  # Changed from should to must for AND logic
-                "filter": [],  # Use filter for exact constraints
+                "must": [],     # Required conditions (AND logic)
+                "should": [],   # Optional conditions (OR logic)  
+                "filter": [],   # Exact filters (AND logic)
                 "minimum_should_match": 0
             }
         }
 
-        # Text search with fuzzy matching for title only (from code 2)
+        # === TEXT SEARCH SECTION ===
         if search_query:
             search_query = search_query.strip()
+            logger.info(f"🔍 Text search with {search_logic} logic: '{search_query}'")
             
-            # Text search with fuzzy matching for title only
-            text_queries = []
-            
-            # 1. Exact phrase match (highest priority)
-            text_queries.append({
-                "match_phrase": {
-                    "title": {
-                        "query": search_query,
-                        "boost": 5
+            # Create different search strategies
+            text_search_queries = [
+                # 1. Exact phrase match (highest priority)
+                {
+                    "match_phrase": {
+                        "title": {
+                            "query": search_query,
+                            "boost": 5
+                        }
                     }
-                }
-            })
-            
-            # 2. Fuzzy match on title
-            text_queries.extend([
+                },
+                # 2. Fuzzy match
                 {
                     "fuzzy": {
                         "title": {
@@ -530,6 +538,7 @@ def search_boardgames(
                         }
                     }
                 },
+                # 3. Wildcard match
                 {
                     "wildcard": {
                         "title": {
@@ -539,6 +548,7 @@ def search_boardgames(
                         }
                     }
                 },
+                # 4. Prefix match
                 {
                     "prefix": {
                         "title": {
@@ -548,29 +558,26 @@ def search_boardgames(
                         }
                     }
                 }
-            ])
+            ]
             
-            # Add all text queries to must clause (AND logic for title search)
-            query["bool"]["must"].extend(text_queries)
-            query["bool"]["minimum_should_match"] = 1
+            if search_logic.upper() == "OR":
+                # OR logic: any of the search strategies can match
+                query["bool"]["should"].extend(text_search_queries)
+                query["bool"]["minimum_should_match"] = max(1, query["bool"]["minimum_should_match"])
+            else:  # AND logic
+                # AND logic: all search strategies must match (usually too strict)
+                # More practical: require the query to match in at least one way
+                text_search_bool = {
+                    "bool": {
+                        "should": text_search_queries,
+                        "minimum_should_match": 1
+                    }
+                }
+                query["bool"]["must"].append(text_search_bool)
 
-        # Player count filter - use as filter for exact constraint (from code 2)
-        if player_count is not None and player_count > 0:
-            query["bool"]["filter"].extend([
-                {"range": {"min_players": {"lte": player_count}}},
-                {"range": {"max_players": {"gte": player_count}}}
-            ])
-
-        # Play time filter - use as filter for exact constraint (from code 2)
-        if play_time is not None and play_time > 0:
-            query["bool"]["filter"].extend([
-                {"range": {"play_time_min": {"lte": play_time}}},
-                {"range": {"play_time_max": {"gte": play_time}}}
-            ])
-
-        # Categories filter - Enhanced fuzzy matching with OR logic (from code 1)
+        # === CATEGORY SEARCH SECTION ===
         if categories:
-            # Convert categories to list if it's a string
+            # Convert and clean categories
             if isinstance(categories, str):
                 try:
                     import json
@@ -578,7 +585,6 @@ def search_boardgames(
                 except json.JSONDecodeError:
                     categories = [cat.strip() for cat in categories.split(',')]
             
-            # Clean up categories
             cleaned_categories = []
             for cat in categories:
                 if isinstance(cat, str):
@@ -587,15 +593,13 @@ def search_boardgames(
                         cleaned_categories.append(cat)
             
             if cleaned_categories:
-                logger.info(f"🏷️ Searching for categories with fuzzy AND logic: {cleaned_categories}")
+                logger.info(f"🏷️ Category search with {category_logic} logic: {cleaned_categories}")
                 
-                # Create category queries for AND matching
+                # Create fuzzy search for each category
                 category_queries = []
-                
                 for cat in cleaned_categories:
-                    # Multiple fuzzy strategies for each category
-                    cat_strategies = [
-                        # Exact match (highest priority)
+                    cat_search_strategies = [
+                        # Exact match
                         {
                             "term": {
                                 "categories.keyword": {
@@ -614,7 +618,7 @@ def search_boardgames(
                                 }
                             }
                         },
-                        # Fuzzy match with different fuzziness levels
+                        # Fuzzy match
                         {
                             "match": {
                                 "categories": {
@@ -624,16 +628,7 @@ def search_boardgames(
                                 }
                             }
                         },
-                        {
-                            "match": {
-                                "categories": {
-                                    "query": cat,
-                                    "fuzziness": "1",
-                                    "boost": 2.5
-                                }
-                            }
-                        },
-                        # Wildcard for partial matches
+                        # Wildcard match
                         {
                             "wildcard": {
                                 "categories": {
@@ -642,39 +637,60 @@ def search_boardgames(
                                     "boost": 2
                                 }
                             }
-                        },
-                        # Prefix match
-                        {
-                            "prefix": {
-                                "categories": {
-                                    "value": cat,
-                                    "case_insensitive": True,
-                                    "boost": 2
-                                }
-                            }
                         }
                     ]
                     
-                    # Add all strategies for this category
-                    category_queries.extend(cat_strategies)
-                
-                # Add category queries to must clause (AND logic)
-                query["bool"]["must"].append({
-                    "bool": {
-                        "must": category_queries
+                    # Each category must match at least one strategy
+                    category_query = {
+                        "bool": {
+                            "should": cat_search_strategies,
+                            "minimum_should_match": 1
+                        }
                     }
-                })
+                    category_queries.append(category_query)
                 
-                logger.info(f"🔍 Added {len(category_queries)} category queries with AND logic")
+                # Apply category logic
+                if category_logic.upper() == "OR":
+                    # OR logic: match any category
+                    query["bool"]["should"].extend(category_queries)
+                    query["bool"]["minimum_should_match"] = max(1, query["bool"]["minimum_should_match"])
+                else:  # AND logic
+                    # AND logic: must match all categories
+                    query["bool"]["must"].extend(category_queries)
+                
+                logger.info(f"🔍 Added {len(category_queries)} category queries with {category_logic} logic")
 
-        # Handle empty query - show popular games
-        if not query["bool"]["must"] and not query["bool"]["filter"]:
+        # === EXACT FILTERS SECTION (Always AND logic) ===
+        
+        # Player count filter
+        if player_count is not None and player_count > 0:
+            logger.info(f"👥 Player count filter: {player_count}")
+            query["bool"]["filter"].extend([
+                {"range": {"min_players": {"lte": player_count}}},
+                {"range": {"max_players": {"gte": player_count}}}
+            ])
+
+        # Play time filter  
+        if play_time is not None and play_time > 0:
+            logger.info(f"⏱️ Play time filter: {play_time} minutes")
+            query["bool"]["filter"].extend([
+                {"range": {"play_time_min": {"lte": play_time}}},
+                {"range": {"play_time_max": {"gte": play_time}}}
+            ])
+
+        # === HANDLE EMPTY QUERY ===
+        if (not query["bool"]["must"] and 
+            not query["bool"]["should"] and 
+            not query["bool"]["filter"]):
+            logger.info("📋 No search criteria provided, showing popular games")
             query = {"match_all": {}}
 
-        # Calculate pagination
+        # === EXECUTE SEARCH ===
         from_ = max(0, (page - 1) * limit)
+        
+        # Log the final query structure for debugging
+        logger.info(f"🔧 Final query structure: must={len(query.get('bool', {}).get('must', []))}, should={len(query.get('bool', {}).get('should', []))}, filter={len(query.get('bool', {}).get('filter', []))}")
 
-        # Execute search with enhanced scoring
         response = client.search(
             index=boardgame_index_name,
             body={
@@ -682,16 +698,11 @@ def search_boardgames(
                 "size": limit,
                 "from": from_,
                 "sort": [
-                    # Primary sort by relevance score
                     {"_score": {"order": "desc"}},
-                    # Secondary sort by popularity
                     {"popularity_score": {"order": "desc", "missing": "_last"}},
-                    # Tertiary sort by rating
                     {"rating_avg": {"order": "desc", "missing": "_last"}},
-                    # Final sort by ID for consistency
                     {"id": {"order": "asc"}}
                 ],
-                # Add highlighting to see what matched
                 "highlight": {
                     "fields": {
                         "title": {
@@ -705,46 +716,42 @@ def search_boardgames(
                             "post_tags": ["</mark>"],
                             "fragment_size": 150,
                             "number_of_fragments": 3
-                        },
-                        "description": {
-                            "pre_tags": ["<mark>"],
-                            "post_tags": ["</mark>"],
-                            "fragment_size": 200,
-                            "number_of_fragments": 1
                         }
                     }
-                },
-                # Add explanation for debugging (can be removed in production)
-                "explain": False
+                }
             }
         )
 
+        # === PROCESS RESULTS ===
         boardgames = []
         for hit in response['hits']['hits']:
             boardgame_data = hit['_source']
-            
-            # Add search metadata for debugging
             boardgame_data['_search_score'] = hit['_score']
             if 'highlight' in hit:
                 boardgame_data['_highlights'] = hit['highlight']
                 
-            # Convert back to Boardgame object
             try:
                 boardgame = Boardgame(**boardgame_data)
                 boardgames.append(boardgame)
             except Exception as e:
                 logger.warning(f"⚠️ Error creating Boardgame object: {e}")
-                # Continue with raw data if object creation fails
                 boardgames.append(boardgame_data)
 
-        # Enhanced logging
-        search_type = "fuzzy AND" if (search_query or categories) else "popular"
-        logger.info(f"✅ {search_type.upper()} search completed: query='{search_query}', player_count={player_count}, play_time={play_time}, categories={categories}, results={len(boardgames)}")
+        # === LOGGING ===
+        search_type = f"text({search_logic})" if search_query else ""
+        category_type = f"categories({category_logic})" if categories else ""
+        filter_type = "filters" if (player_count or play_time) else ""
         
-        # Log top results for debugging
-        if boardgames and len(boardgames) > 0:
+        search_description = " + ".join(filter(None, [search_type, category_type, filter_type]))
+        if not search_description:
+            search_description = "popular"
+            
+        logger.info(f"✅ {search_description.upper()} search completed: results={len(boardgames)}")
+        
+        # Log top results
+        if boardgames:
             logger.info("🎯 Top search results:")
-            for i, bg in enumerate(boardgames[:3]):  # Show top 3
+            for i, bg in enumerate(boardgames[:3]):
                 if isinstance(bg, dict):
                     title = bg.get('title', 'Unknown')
                     score = bg.get('_search_score', 0)
@@ -754,26 +761,66 @@ def search_boardgames(
                     score = getattr(bg, '_search_score', 0)
                     cats = bg.categories
                 
-                logger.info(f"  {i+1}. {title} (Score: {score:.2f}, Categories: {cats})")
+                logger.info(f"  {i+1}. {title} (Score: {score:.2f})")
         
-        # Helpful suggestion if no results
+        # Suggestions for no results
         if len(boardgames) == 0 and (search_query or categories):
             logger.info("💡 No results found. Try:")
             logger.info("  - Using broader search terms")
+            logger.info("  - Switching logic (OR vs AND)")
             logger.info("  - Checking spelling")
-            logger.info("  - Searching for partial category names")
-            
-            # Show available categories for reference
-            if categories:
-                available_cats = get_all_categories()[:10]  # Show first 10
-                logger.info(f"  - Available categories include: {', '.join(available_cats)}")
 
         return boardgames
 
     except Exception as e:
-        logger.error(f"❌ Fuzzy search error: {str(e)}")
+        logger.error(f"❌ Search error: {str(e)}")
         logger.error(f"Query that caused error: {query if 'query' in locals() else 'Query not constructed'}")
         return []
+
+
+# === CONVENIENCE FUNCTIONS ===
+
+def search_boardgames_flexible_or(
+    search_query: Optional[str] = None,
+    categories: Optional[List[str]] = None,
+    **kwargs
+) -> List[Boardgame]:
+    """Search with OR logic for both text and categories (more permissive)."""
+    return search_boardgames(
+        search_query=search_query,
+        categories=categories,
+        search_logic="OR",
+        category_logic="OR",
+        **kwargs
+    )
+
+def search_boardgames_strict_and(
+    search_query: Optional[str] = None,
+    categories: Optional[List[str]] = None,
+    **kwargs
+) -> List[Boardgame]:
+    """Search with AND logic for both text and categories (more restrictive)."""
+    return search_boardgames(
+        search_query=search_query,
+        categories=categories,
+        search_logic="AND",
+        category_logic="AND",
+        **kwargs
+    )
+
+def search_boardgames_mixed(
+    search_query: Optional[str] = None,
+    categories: Optional[List[str]] = None,
+    **kwargs
+) -> List[Boardgame]:
+    """Search with OR logic for text but AND logic for categories (balanced)."""
+    return search_boardgames(
+        search_query=search_query,
+        categories=categories,
+        search_logic="OR",
+        category_logic="AND",
+        **kwargs
+    )
     
 def find_similar_categories(search_categories: List[str], limit: int = 5) -> List[str]:
     """Find categories similar to the search terms using fuzzy matching"""
@@ -890,7 +937,6 @@ def get_all_categories() -> List[str]:
     except Exception as e:
         logger.error(f"❌ Error getting categories: {e}")
         return []
-
 
 # เพิ่มฟังก์ชันสำหรับตรวจสอบ mapping ของ categories field
 def check_categories_mapping():
