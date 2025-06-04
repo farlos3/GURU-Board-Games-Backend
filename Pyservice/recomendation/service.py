@@ -531,17 +531,35 @@ def search_boardgames(
 
         # Categories filter
         if categories:
-            # ลองทั้ง exact match และ partial match เผื่อ categories ไม่ได้เป็น keyword
-            query["bool"]["must"].append({
-                "bool": {
-                    "should": [
-                        {"terms": {"categories": [cat.lower() for cat in categories]}},
-                        {"terms": {"categories": categories}},  # กรณี case-sensitive
-                        {"match": {"categories": " ".join(categories)}}  # partial match
-                    ],
-                    "minimum_should_match": 1
-                }
-            })
+            # Convert categories to list if it's a string
+            if isinstance(categories, str):
+                try:
+                    # Try to parse as JSON if it's a string representation of a list
+                    import json
+                    categories = json.loads(categories)
+                except json.JSONDecodeError:
+                    # If not JSON, treat as comma-separated string
+                    categories = [cat.strip() for cat in categories.split(',')]
+            
+            # Clean up categories - remove any JSON-like formatting
+            cleaned_categories = []
+            for cat in categories:
+                if isinstance(cat, str):
+                    # Remove any JSON-like formatting
+                    cat = cat.strip('[]"\'')
+                    if cat:
+                        cleaned_categories.append(cat.lower())
+            
+            if cleaned_categories:
+                query["bool"]["must"].append({
+                    "bool": {
+                        "should": [
+                            {"terms": {"categories": cleaned_categories}},
+                            {"match": {"categories": " ".join(cleaned_categories)}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                })
 
         # Handle empty query - แสดงเกมยอดนิยม
         if not query["bool"]["must"] and not query["bool"]["should"]:
