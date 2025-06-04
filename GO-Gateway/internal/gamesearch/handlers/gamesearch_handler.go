@@ -24,8 +24,6 @@ func NewGameSearchHandlers(pythonServiceURL string) *GameSearchHandlers {
 
 // HandleGameSearch receives and processes game search queries by forwarding to Python service
 func (h *GameSearchHandlers) HandleGameSearch(c *fiber.Ctx) error {
-	log.Println("Received game search query")
-
 	var query models.GameSearchQuery
 
 	// Parse the query parameters into the GameSearchQuery struct
