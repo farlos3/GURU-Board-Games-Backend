@@ -1,12 +1,12 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 import uvicorn
 import logging
 import os
 from dotenv import load_dotenv
-from recomendation.service import recommendation_service, UserAction, Boardgame
+from recomendation.service import recommendation_service, UserAction, Boardgame, search_boardgames
 
 # Load environment variables
 load_dotenv()
@@ -93,6 +93,33 @@ async def get_boardgame_actions(boardgame_id: str):
         return {"actions": actions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# New endpoint for searching boardgames
+@app.get("/api/search")
+async def search_boardgames_endpoint(
+    searchQuery: Optional[str] = None,
+    playerCount: Optional[int] = None,
+    playTime: Optional[int] = None,
+    categories: Optional[str] = None,
+    limit: int = 10,
+    page: int = 1
+):
+    try:
+        categories_list = categories.split(",") if categories else None
+
+        results = search_boardgames(
+            search_query=searchQuery,
+            player_count=playerCount,
+            play_time=playTime,
+            categories=categories_list,
+            limit=limit,
+            page=page
+        )
+        return results
+    except Exception as e:
+        logger.error(f"❌ Error in /api/search endpoint: {e}")
+        # Return an empty list on error to match expected frontend format
+        return []
 
 def main():
     """Main entry point for Python ML Service"""

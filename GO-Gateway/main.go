@@ -16,6 +16,9 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+
+	// Ensure the gamesearch handlers package is imported
+	gamesearchhandlers "guru-game/internal/gamesearch/handlers"
 )
 
 func main() {
@@ -48,10 +51,16 @@ func main() {
 	gameRuleService := service_board.NewGameRuleService(gameRuleRepo)
 	log.Println("✅ Services initialized")
 
-	// ตั้งค่า routes
+	// Initialize Game Search Handlers
+	pythonServiceURL := os.Getenv("PYTHON_SERVICE_URL")
+	if pythonServiceURL == "" {
+		pythonServiceURL = "http://localhost:50051" // default URL
+	}
+	gameSearchHandlers := gamesearchhandlers.NewGameSearchHandlers(pythonServiceURL)
+
 	log.Println("🔧 Setting up routes...")
 	// Pass the concrete boardGameRepo which satisfies the interface
-	routes.SetupRoutes(app, userStateRepo, boardGameRepo, gameRuleService)
+	routes.SetupRoutes(app, userStateRepo, boardGameRepo, gameRuleService, gameSearchHandlers)
 	log.Println("✅ Routes configured")
 
 	port := os.Getenv("GO_PORT")

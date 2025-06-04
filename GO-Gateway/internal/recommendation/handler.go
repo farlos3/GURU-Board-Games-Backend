@@ -222,6 +222,8 @@ func (h *Handler) HandleGetAllBoardgamesFromES(c *fiber.Ctx) error {
 
 // HandleGetFavoritedBoardgames handles fetching favorited boardgames for a user directly from DB
 func (h *Handler) HandleGetFavoritedBoardgames(c *fiber.Ctx) error {
+	log.Printf("Received request to get favorited boardgames for user ID: %s", c.Params("user_id"))
+
 	userIDStr := c.Params("user_id")
 	userID, err := strconv.Atoi(userIDStr)
 	if err != nil {

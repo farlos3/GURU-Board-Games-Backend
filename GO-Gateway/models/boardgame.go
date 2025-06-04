@@ -37,7 +37,7 @@ type ActivityData struct {
 
 // GameSearchQuery represents the expected structure of the incoming query parameters
 type GameSearchQuery struct {
-	SearchQuery string   `query:"searchQuery"`
+	SearchQuery string   `query:"query"`
 	Categories  []string `query:"categories"`
 	PlayerCount int      `query:"playerCount"`
 	PlayTime    int      `query:"playTime"`

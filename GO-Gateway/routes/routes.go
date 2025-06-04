@@ -18,7 +18,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func SetupRoutes(app *fiber.App, userStateRepo user_states.UserStateRepository, boardGameRepo boardgame.BoardGameRepository, gameRuleService *service_board.GameRuleService) {
+func SetupRoutes(app *fiber.App, userStateRepo user_states.UserStateRepository, boardGameRepo boardgame.BoardGameRepository, gameRuleService *service_board.GameRuleService, gameSearchHandlers *gamesearchhandlers.GameSearchHandlers) {
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("⚠️ Warning: .env file not found")
@@ -76,12 +76,11 @@ func SetupRoutes(app *fiber.App, userStateRepo user_states.UserStateRepository, 
 
 	// ส่งข้อมูล boardgames ทั้งหมดไปยัง Python ML service
 	reco.Post("/send-all", recommendHandler.HandleSendAllBoardgames)
-	reco.Get("/send-all", recommendHandler.HandleSendAllBoardgames) // รองรับ GET ด้วย
+	reco.Get("/send-all", recommendHandler.HandleSendAllBoardgames)
 
 	// ขอ recommendations สำหรับ user
 	reco.Get("/", recommendHandler.HandleGetRecommendations)
 	reco.Get("/user/:user_id", func(c *fiber.Ctx) error {
-		// ตั้งค่า user_id จาก path parameter
 		c.Queries()["user_id"] = c.Params("user_id")
 		return recommendHandler.HandleGetRecommendations(c)
 	})
@@ -98,8 +97,7 @@ func SetupRoutes(app *fiber.App, userStateRepo user_states.UserStateRepository, 
 	reco.Get("/actions/boardgame/:boardgame_id", recommendHandler.HandleGetBoardgameActions)
 
 	// Get user's favorite boardgames directly from DB
-	reco.Get("/favorites/:user_id", recommendHandler.HandleGetFavoritedBoardgames) // Use the new handler
-
+	reco.Get("/favorites/:user_id", recommendHandler.HandleGetFavoritedBoardgames)
 	// Game State Update routes
 	gameState := app.Group("/api/game/updateState")
 	// Create an instance of GameStateHandlers with the UserStateRepository
@@ -109,6 +107,6 @@ func SetupRoutes(app *fiber.App, userStateRepo user_states.UserStateRepository, 
 	gameState.Patch("/", gameStateHandlersInstance.HandleGameStateUpdate)
 
 	// Game Search routes
-	gameSearch := app.Group("/api/game/search")
-	gameSearch.Get("/", gamesearchhandlers.HandleGameSearch)
+	gameSearch := app.Group("/api/search")
+	gameSearch.Get("/", gameSearchHandlers.HandleGameSearch)
 }

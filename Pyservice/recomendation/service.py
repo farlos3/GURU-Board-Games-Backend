@@ -242,4 +242,186 @@ class RecommendationService:
             return sorted_games[:limit]
 
 # Create a singleton instance
-recommendation_service = RecommendationService() 
+recommendation_service = RecommendationService()
+
+def search_boardgames(
+    search_query: Optional[str] = None,
+    player_count: Optional[int] = None,
+    play_time: Optional[int] = None,
+    categories: Optional[List[str]] = None,
+    limit: int = 10,
+    page: int = 1
+) -> List[Boardgame]:
+    """Search boardgames with improved query logic (works with existing mapping)."""
+    try:
+        query = {
+            "bool": {
+                "must": [],
+                "should": [],
+                "minimum_should_match": 0
+            }
+        }
+
+        if search_query:
+            search_query = search_query.strip()
+            
+            if len(search_query) <= 2:
+                # สำหรับคำสั้น ใช้หลายกลยุทธ์
+                query["bool"]["should"].extend([
+                    # Wildcard search - หาทุกที่ในชื่อ
+                    {
+                        "wildcard": {
+                            "title": {
+                                "value": f"*{search_query.lower()}*",
+                                "boost": 3,
+                                "case_insensitive": True
+                            }
+                        }
+                    },
+                    # Prefix search - หาคำที่ขึ้นต้น
+                    {
+                        "prefix": {
+                            "title": {
+                                "value": search_query.lower(),
+                                "boost": 2,
+                                "case_insensitive": True
+                            }
+                        }
+                    },
+                    # Fuzzy search - รองรับ typo
+                    {
+                        "fuzzy": {
+                            "title": {
+                                "value": search_query,
+                                "fuzziness": "AUTO",
+                                "boost": 1
+                            }
+                        }
+                    },
+                    # Match search - หาใน description และ categories
+                    {
+                        "multi_match": {
+                            "query": search_query,
+                            "fields": ["description^0.5", "categories^1"],
+                            "fuzziness": "AUTO",
+                            "boost": 0.5
+                        }
+                    }
+                ])
+                query["bool"]["minimum_should_match"] = 1
+            else:
+                # สำหรับคำยาว ใช้ multi_match หลัก
+                query["bool"]["must"].append({
+                    "multi_match": {
+                        "query": search_query,
+                        "fields": [
+                            "title^4",        # น้ำหนักสูงสุดให้ title
+                            "description^1",   # น้ำหนักปกติให้ description
+                            "categories^2"     # น้ำหนักสูงให้ categories
+                        ],
+                        "fuzziness": "AUTO",
+                        "operator": "or",
+                        "minimum_should_match": "75%"
+                    }
+                })
+
+        # Player count filter
+        if player_count is not None and player_count > 0:
+            query["bool"]["must"].extend([
+                {"range": {"min_players": {"lte": player_count}}},
+                {"range": {"max_players": {"gte": player_count}}}
+            ])
+
+        # Play time filter  
+        if play_time is not None and play_time > 0:
+            query["bool"]["must"].extend([
+                {"range": {"play_time_min": {"lte": play_time}}},
+                {"range": {"play_time_max": {"gte": play_time}}}
+            ])
+
+        # Categories filter
+        if categories:
+            # ลองทั้ง exact match และ partial match เผื่อ categories ไม่ได้เป็น keyword
+            query["bool"]["must"].append({
+                "bool": {
+                    "should": [
+                        {"terms": {"categories": [cat.lower() for cat in categories]}},
+                        {"terms": {"categories": categories}},  # กรณี case-sensitive
+                        {"match": {"categories": " ".join(categories)}}  # partial match
+                    ],
+                    "minimum_should_match": 1
+                }
+            })
+
+        # Handle empty query - แสดงเกมยอดนิยม
+        if not query["bool"]["must"] and not query["bool"]["should"]:
+            query = {"match_all": {}}
+
+        # Calculate pagination
+        from_ = max(0, (page - 1) * limit)
+
+        # Execute search
+        response = client.search(
+            index=boardgame_index_name,
+            body={
+                "query": query,
+                "size": limit,
+                "from": from_,
+                "sort": [
+                    {"_score": {"order": "desc"}},
+                    {"popularity_score": {"order": "desc", "missing": "_last"}},
+                    {"rating_avg": {"order": "desc", "missing": "_last"}}
+                ],
+                # เพิ่ม highlighting เพื่อดูว่าตรงกับอะไร
+                "highlight": {
+                    "fields": {
+                        "title": {
+                            "pre_tags": ["<mark>"],
+                            "post_tags": ["</mark>"],
+                            "fragment_size": 150
+                        },
+                        "description": {
+                            "pre_tags": ["<mark>"],
+                            "post_tags": ["</mark>"],
+                            "fragment_size": 150,
+                            "number_of_fragments": 1
+                        }
+                    }
+                }
+            }
+        )
+
+        boardgames = []
+        for hit in response['hits']['hits']:
+            boardgame_data = hit['_source']
+            
+            # เพิ่มข้อมูล debug
+            boardgame_data['_search_score'] = hit['_score']
+            if 'highlight' in hit:
+                boardgame_data['_highlights'] = hit['highlight']
+                
+            boardgames.append(boardgame_data)
+
+        logger.info(f"✅ Search completed: query='{search_query}', player_count={player_count}, play_time={play_time}, categories={categories}, results={len(boardgames)}")
+        
+        # Debug logging สำหรับกรณีไม่เจอผลลัพธ์
+        if len(boardgames) == 0:
+            logger.warning(f"⚠️ No results found. Query used: {query}")
+            
+            # ลองค้นหาแบบง่ายๆ เพื่อดูว่ามีข้อมูลหรือไม่
+            if search_query:
+                debug_response = client.search(
+                    index=boardgame_index_name,
+                    body={
+                        "query": {"match_all": {}},
+                        "size": 3
+                    }
+                )
+                logger.info(f"Sample data in index: {[hit['_source'].get('title', 'No title') for hit in debug_response['hits']['hits']]}")
+
+        return boardgames
+
+    except Exception as e:
+        logger.error(f"❌ Search error: {str(e)}")
+        logger.error(f"Query that caused error: {query if 'query' in locals() else 'Query not constructed'}")
+        return []
