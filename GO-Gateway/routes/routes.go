@@ -78,7 +78,9 @@ func SetupRoutes(app *fiber.App, userStateRepo user_states.UserStateRepository, 
 	reco.Post("/send-all", recommendHandler.HandleSendAllBoardgames)
 	reco.Get("/send-all", recommendHandler.HandleSendAllBoardgames)
 
-	// ขอ recommendations สำหรับ user
+	// Behavior-based recommendations
+	reco.Get("/behavior/:user_id", recommendHandler.HandleGetBehaviorBasedRecommendations)
+
 	reco.Get("/", recommendHandler.HandleGetRecommendations)
 	reco.Get("/user/:user_id", func(c *fiber.Ctx) error {
 		c.Queries()["user_id"] = c.Params("user_id")

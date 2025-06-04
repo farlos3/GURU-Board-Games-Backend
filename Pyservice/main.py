@@ -11,6 +11,9 @@ from recomendation.service import recommendation_service, UserAction, Boardgame,
 # Load environment variables
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 # Get port from environment variable, default to 50051
 PORT = int(os.getenv("PYTHON_SERVICE_PORT", "50051"))
 
@@ -33,6 +36,12 @@ class Boardgame(BaseModel):
     popularity_score: float
     image_url: str
 
+class RecommendationRequest(BaseModel):
+    user_id: str
+    limit: int = 10
+    user_actions: Optional[List[UserAction]] = None
+    user_categories: Optional[List[str]] = None
+
 # Routes
 @app.post("/api/actions")
 async def send_user_action(action: UserAction):
@@ -44,12 +53,36 @@ async def send_user_action(action: UserAction):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/recommendations")
-async def get_recommendations(user_id: str, limit: int = 10):
+@app.post("/recommendations")
+async def get_recommendations(request: RecommendationRequest):
     try:
-        recommendations = recommendation_service.get_recommendations(user_id, limit)
+        logger.info("\n📥 ===== Received Recommendation Request =====")
+        logger.info(f"👤 User ID: {request.user_id}")
+        logger.info(f"🎯 Limit: {request.limit}")
+        
+        if request.user_actions:
+            logger.info(f"📊 User Actions: {len(request.user_actions)}")
+            for action in request.user_actions:
+                logger.info(f"  - {action.action_type} for boardgame {action.boardgame_id}")
+        
+        if request.user_categories:
+            logger.info(f"🏷️ User Categories: {request.user_categories}")
+        
+        # Get recommendations using the service
+        recommendations = recommendation_service.get_recommendations(
+            user_id=request.user_id,
+            limit=request.limit,
+            user_actions=request.user_actions,
+            user_categories=request.user_categories
+        )
+        
+        logger.info(f"✅ Generated {len(recommendations)} recommendations")
+        logger.info("===========================================\n")
+        
+        # Return only the recommended boardgames
         return {"boardgames": recommendations}
     except Exception as e:
+        logger.error(f"❌ Error in recommendations endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/boardgames")
